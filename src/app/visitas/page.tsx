@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 
 type Cliente = {
@@ -45,11 +47,7 @@ export default function VisitasPage() {
       .select("id, razao_social")
       .order("razao_social");
 
-    if (error) {
-      alert("Erro ao carregar clientes: " + error.message);
-      return;
-    }
-
+    if (error) return alert(error.message);
     setClientes(data || []);
   }
 
@@ -59,11 +57,7 @@ export default function VisitasPage() {
       .select("*, clientes(razao_social)")
       .order("data_visita", { ascending: false });
 
-    if (error) {
-      alert("Erro ao carregar visitas: " + error.message);
-      return;
-    }
-
+    if (error) return alert(error.message);
     setVisitas(data || []);
   }
 
@@ -73,16 +67,25 @@ export default function VisitasPage() {
 
     setCarregando(true);
 
-    const { error } = await supabase.from("visitas").insert(form);
+    const { error } = form.id
+      ? await supabase.from("visitas").update(form).eq("id", form.id)
+      : await supabase.from("visitas").insert(form);
 
     setCarregando(false);
 
-    if (error) {
-      alert("Erro ao salvar visita: " + error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     setForm(inicial);
+    carregarVisitas();
+  }
+
+  async function excluirVisita(id?: string) {
+    if (!id) return;
+    if (!confirm("Deseja excluir esta visita?")) return;
+
+    const { error } = await supabase.from("visitas").delete().eq("id", id);
+    if (error) return alert(error.message);
+
     carregarVisitas();
   }
 
@@ -94,63 +97,22 @@ export default function VisitasPage() {
   return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
-        <aside className="min-h-screen w-64 bg-gradient-to-b from-slate-950 to-blue-900 text-white">
-          <div className="p-8">
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-300">
-              Berbel
-            </p>
-            <h1 className="text-3xl font-bold">Connect</h1>
-          </div>
-
-          <nav className="space-y-2 px-5">
-            <a href="/" className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Painel
-            </a>
-            <a href="/clientes" className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Clientes
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Fornecedores
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Produtos
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Agenda
-            </a>
-            <a href="/visitas" className="block rounded-xl bg-blue-600 px-4 py-3">
-              Visitas
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Pedidos
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Comissões
-            </a>
-          </nav>
-        </aside>
+        <Sidebar />
 
         <section className="flex-1">
-          <header className="flex items-center justify-between border-b bg-white px-10 py-7">
-            <div>
-              <p className="text-sm font-medium text-slate-500">CRM Comercial</p>
-              <h2 className="text-3xl font-bold text-slate-900">
-                Visitas Comerciais
-              </h2>
-            </div>
-
-            <a
-              href="/"
-              className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Voltar ao painel
-            </a>
-          </header>
+          <PageHeader titulo="Visitas Comerciais" subtitulo="CRM Comercial" />
 
           <div className="p-8">
+            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+              <Card titulo="Visitas cadastradas" valor={visitas.length} />
+              <Card titulo="Clientes" valor={clientes.length} />
+              <Card titulo="Status padrão" valor="Realizada" />
+              <Card titulo="Tipo padrão" valor="Visita" />
+            </div>
+
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-5 text-xl font-bold text-slate-800">
-                Nova visita
+                {form.id ? "Editar visita" : "Nova visita"}
               </h3>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -159,7 +121,7 @@ export default function VisitasPage() {
                   onChange={(e) =>
                     setForm({ ...form, cliente_id: e.target.value })
                   }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 >
                   <option value="">Selecione o cliente</option>
                   {clientes.map((cliente) => (
@@ -175,7 +137,7 @@ export default function VisitasPage() {
                   onChange={(e) =>
                     setForm({ ...form, data_visita: e.target.value })
                   }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 />
 
                 <input
@@ -184,22 +146,19 @@ export default function VisitasPage() {
                   onChange={(e) =>
                     setForm({ ...form, hora_visita: e.target.value })
                   }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 />
 
-                <input
-                  placeholder="Pessoa atendida"
+                <Campo
+                  label="Pessoa atendida"
                   value={form.pessoa_atendida}
-                  onChange={(e) =>
-                    setForm({ ...form, pessoa_atendida: e.target.value })
-                  }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  onChange={(v) => setForm({ ...form, pessoa_atendida: v })}
                 />
 
                 <select
                   value={form.tipo}
                   onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 >
                   <option>Visita</option>
                   <option>Ligação</option>
@@ -210,8 +169,10 @@ export default function VisitasPage() {
 
                 <select
                   value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  onChange={(e) =>
+                    setForm({ ...form, status: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 >
                   <option>Realizada</option>
                   <option>Agendada</option>
@@ -225,33 +186,45 @@ export default function VisitasPage() {
                   onChange={(e) =>
                     setForm({ ...form, data_retorno: e.target.value })
                   }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 />
 
-                <input
-                  placeholder="Próxima ação"
+                <Campo
+                  label="Próxima ação"
                   value={form.proxima_acao}
-                  onChange={(e) =>
-                    setForm({ ...form, proxima_acao: e.target.value })
-                  }
-                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
+                  onChange={(v) => setForm({ ...form, proxima_acao: v })}
                 />
 
                 <textarea
                   placeholder="Resumo da visita"
                   value={form.resumo}
-                  onChange={(e) => setForm({ ...form, resumo: e.target.value })}
-                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-3"
+                  onChange={(e) =>
+                    setForm({ ...form, resumo: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600 md:col-span-3"
                 />
               </div>
 
-              <button
-                onClick={salvarVisita}
-                disabled={carregando}
-                className="mt-5 rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800"
-              >
-                {carregando ? "Salvando..." : "Salvar visita"}
-              </button>
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={salvarVisita}
+                  disabled={carregando}
+                  className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800"
+                >
+                  {carregando
+                    ? "Salvando..."
+                    : form.id
+                    ? "Salvar alterações"
+                    : "Salvar visita"}
+                </button>
+
+                <button
+                  onClick={() => setForm(inicial)}
+                  className="rounded-xl border border-slate-300 px-6 py-3 font-semibold"
+                >
+                  Limpar
+                </button>
+              </div>
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -268,26 +241,57 @@ export default function VisitasPage() {
                       <th className="px-4 py-3">Tipo</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Próxima ação</th>
+                      <th className="px-4 py-3">Ações</th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
                     {visitas.map((visita) => (
                       <tr key={visita.id}>
-                        <td className="px-4 py-4 font-semibold">
-                          {visita.clientes?.razao_social || "Cliente não informado"}
+                        <td className="px-4 py-4 font-semibold text-slate-800">
+                          {visita.clientes?.razao_social ||
+                            "Cliente não informado"}
                         </td>
                         <td className="px-4 py-4">{visita.data_visita}</td>
                         <td className="px-4 py-4">{visita.tipo}</td>
                         <td className="px-4 py-4">{visita.status}</td>
                         <td className="px-4 py-4">{visita.proxima_acao}</td>
+                        <td className="space-x-2 px-4 py-4">
+                          <button
+                            onClick={() =>
+                              setForm({
+                                id: visita.id,
+                                cliente_id: visita.cliente_id,
+                                data_visita: visita.data_visita || "",
+                                hora_visita: visita.hora_visita || "",
+                                pessoa_atendida:
+                                  visita.pessoa_atendida || "",
+                                tipo: visita.tipo || "Visita",
+                                resumo: visita.resumo || "",
+                                proxima_acao: visita.proxima_acao || "",
+                                data_retorno: visita.data_retorno || "",
+                                status: visita.status || "Realizada",
+                              })
+                            }
+                            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            onClick={() => excluirVisita(visita.id)}
+                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                          >
+                            Excluir
+                          </button>
+                        </td>
                       </tr>
                     ))}
 
                     {visitas.length === 0 && (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-4 py-8 text-center text-slate-500"
                         >
                           Nenhuma visita cadastrada ainda.
@@ -302,5 +306,33 @@ export default function VisitasPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-sm">
+      <p className="text-sm text-slate-500">{titulo}</p>
+      <strong className="mt-2 block text-3xl text-slate-900">{valor}</strong>
+    </div>
+  );
+}
+
+function Campo({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <input
+      placeholder={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+    />
   );
 }

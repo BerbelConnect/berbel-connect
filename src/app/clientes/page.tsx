@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 
 type Cliente = {
@@ -44,64 +46,41 @@ export default function ClientesPage() {
       .select("*")
       .order("razao_social", { ascending: true });
 
-    if (error) {
-      alert("Erro ao carregar clientes: " + error.message);
-      return;
-    }
-
+    if (error) return alert(error.message);
     setClientes(data || []);
   }
 
   async function salvarCliente() {
-    if (!form.razao_social.trim()) {
-      alert("Informe a razão social.");
-      return;
-    }
+    if (!form.razao_social.trim()) return alert("Informe a razão social.");
 
     setCarregando(true);
 
-    const payload = {
-      razao_social: form.razao_social,
-      nome_fantasia: form.nome_fantasia,
-      cnpj: form.cnpj,
-      responsavel: form.responsavel,
-      telefone: form.telefone,
-      whatsapp: form.whatsapp,
-      email: form.email,
-      cidade: form.cidade,
-      estado: form.estado,
-      observacoes: form.observacoes,
-      ativo: form.ativo ?? true,
-    };
-
     const { error } = form.id
-      ? await supabase.from("clientes").update(payload).eq("id", form.id)
-      : await supabase.from("clientes").insert(payload);
+      ? await supabase.from("clientes").update(form).eq("id", form.id)
+      : await supabase.from("clientes").insert(form);
 
     setCarregando(false);
 
-    if (error) {
-      alert("Erro ao salvar cliente: " + error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     setForm(inicial);
-    await carregarClientes();
+    carregarClientes();
   }
 
   async function excluirCliente(id?: string) {
     if (!id) return;
-
     if (!confirm("Deseja excluir este cliente?")) return;
 
     const { error } = await supabase.from("clientes").delete().eq("id", id);
+    if (error) return alert(error.message);
 
-    if (error) {
-      alert("Erro ao excluir cliente: " + error.message);
-      return;
-    }
+    carregarClientes();
+  }
 
-    await carregarClientes();
+  function abrirWhatsApp(numero: string) {
+    const limpo = numero.replace(/\D/g, "");
+    if (!limpo) return alert("Cliente sem WhatsApp cadastrado.");
+    window.open(`https://wa.me/55${limpo}`, "_blank");
   }
 
   const clientesFiltrados = useMemo(() => {
@@ -121,13 +100,6 @@ export default function ClientesPage() {
     );
   }, [clientes, busca]);
 
-  function abrirWhatsApp(numero: string) {
-    const limpo = numero.replace(/\D/g, "");
-    if (!limpo) return alert("Cliente sem WhatsApp cadastrado.");
-
-    window.open(`https://wa.me/55${limpo}`, "_blank");
-  }
-
   useEffect(() => {
     carregarClientes();
   }, []);
@@ -135,56 +107,10 @@ export default function ClientesPage() {
   return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
-        <aside className="min-h-screen w-64 bg-gradient-to-b from-slate-950 to-blue-900 text-white">
-          <div className="p-8">
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-300">
-              Berbel
-            </p>
-            <h1 className="text-3xl font-bold">Connect</h1>
-          </div>
-
-          <nav className="space-y-2 px-5">
-            <a href="/" className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Painel
-            </a>
-            <a href="/clientes" className="block rounded-xl bg-blue-600 px-4 py-3">
-              Clientes
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Fornecedores
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Produtos
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Agenda
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Visitas
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Pedidos
-            </a>
-            <a className="block rounded-xl px-4 py-3 hover:bg-white/10">
-              Comissões
-            </a>
-          </nav>
-        </aside>
+        <Sidebar />
 
         <section className="flex-1">
-          <header className="flex items-center justify-between border-b bg-white px-10 py-7">
-            <div>
-              <p className="text-sm font-medium text-slate-500">CRM Comercial</p>
-              <h2 className="text-3xl font-bold text-slate-900">Clientes</h2>
-            </div>
-
-            <a
-              href="/"
-              className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Voltar ao painel
-            </a>
-          </header>
+          <PageHeader titulo="Clientes" subtitulo="CRM Comercial" />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -274,24 +200,15 @@ export default function ClientesPage() {
                         <td className="px-4 py-4">{cliente.responsavel}</td>
                         <td className="px-4 py-4">{cliente.whatsapp}</td>
                         <td className="space-x-2 px-4 py-4">
-                          <button
-                            onClick={() => setForm(cliente)}
-                            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
-                          >
+                          <button onClick={() => setForm(cliente)} className="rounded-lg border px-3 py-2 hover:bg-slate-50">
                             Editar
                           </button>
 
-                          <button
-                            onClick={() => abrirWhatsApp(cliente.whatsapp)}
-                            className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
-                          >
+                          <button onClick={() => abrirWhatsApp(cliente.whatsapp)} className="rounded-lg bg-green-100 px-3 py-2 text-green-700">
                             WhatsApp
                           </button>
 
-                          <button
-                            onClick={() => excluirCliente(cliente.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
+                          <button onClick={() => excluirCliente(cliente.id)} className="rounded-lg bg-red-100 px-3 py-2 text-red-700">
                             Excluir
                           </button>
                         </td>
