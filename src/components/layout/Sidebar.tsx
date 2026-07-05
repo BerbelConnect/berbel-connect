@@ -6,9 +6,10 @@ const menu = [
   { nome: "Produtos", href: "/produtos" },
   { nome: "Visitas", href: "/visitas" },
   { nome: "Pedidos", href: "/pedidos" },
+  { nome: "Consultar Pedidos", href: "/pedidos/consulta" },
   { nome: "Comissões", href: "/comissoes" },
   { nome: "Agenda", href: "/agenda" },
-{ nome: "Financeiro", href: "/financeiro" },
+  { nome: "Financeiro", href: "/financeiro" },
 ];
 
 export function Sidebar() {
