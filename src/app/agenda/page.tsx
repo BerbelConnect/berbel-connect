@@ -12,11 +12,48 @@ export default function AgendaPage() {
   async function carregarVisitas() {
     const { data, error } = await supabase
       .from("visitas")
-      .select("*, clientes(razao_social)")
+      .select("*, clientes(razao_social, whatsapp, endereco, numero, bairro, cidade, estado, cep)")
       .order("data_visita", { ascending: true });
 
     if (error) return alert(error.message);
     setVisitas(data || []);
+  }
+
+  async function concluirVisita(id: string) {
+    const { error } = await supabase
+      .from("visitas")
+      .update({ concluida: true, status: "Realizada" })
+      .eq("id", id);
+
+    if (error) return alert(error.message);
+    carregarVisitas();
+  }
+
+  function abrirWhatsApp(numero?: string) {
+    const limpo = numero?.replace(/\D/g, "");
+    if (!limpo) return alert("Cliente sem WhatsApp cadastrado.");
+    window.open(`https://wa.me/55${limpo}`, "_blank");
+  }
+
+  function abrirMaps(cliente: any) {
+    const endereco = [
+      cliente?.endereco,
+      cliente?.numero,
+      cliente?.bairro,
+      cliente?.cidade,
+      cliente?.estado,
+      cliente?.cep,
+      "Brasil",
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    if (!endereco) return alert("Cliente sem endereço cadastrado.");
+
+    window.open(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`,
+      "_blank"
+    );
   }
 
   useEffect(() => {
@@ -28,12 +65,13 @@ export default function AgendaPage() {
   const filtradas = useMemo(() => {
     const texto = busca.toLowerCase();
 
-    return visitas.filter((visita) =>
+    return visitas.filter((v) =>
       [
-        visita.clientes?.razao_social,
-        visita.status,
-        visita.tipo,
-        visita.proxima_acao,
+        v.clientes?.razao_social,
+        v.status,
+        v.tipo,
+        v.prioridade,
+        v.proxima_acao,
       ]
         .join(" ")
         .toLowerCase()
@@ -42,10 +80,9 @@ export default function AgendaPage() {
   }, [visitas, busca]);
 
   const visitasHoje = visitas.filter((v) => v.data_visita === hoje);
-  const retornosPendentes = visitas.filter(
-    (v) => v.data_retorno && v.status !== "Cancelada"
-  );
-  const agendadas = visitas.filter((v) => v.status === "Agendada");
+  const pendentes = visitas.filter((v) => !v.concluida);
+  const concluidas = visitas.filter((v) => v.concluida);
+  const retornos = visitas.filter((v) => v.data_retorno && !v.concluida);
 
   return (
     <main className="min-h-screen bg-slate-100">
@@ -53,14 +90,14 @@ export default function AgendaPage() {
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader titulo="Agenda Comercial" subtitulo="Berbel Connect" />
+          <PageHeader titulo="Agenda Inteligente" subtitulo="Berbel Connect" />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
               <Card titulo="Visitas hoje" valor={visitasHoje.length} />
-              <Card titulo="Agendadas" valor={agendadas.length} />
-              <Card titulo="Retornos pendentes" valor={retornosPendentes.length} />
-              <Card titulo="Total de visitas" valor={visitas.length} />
+              <Card titulo="Pendentes" valor={pendentes.length} />
+              <Card titulo="Concluídas" valor={concluidas.length} />
+              <Card titulo="Retornos" valor={retornos.length} />
             </div>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -73,53 +110,73 @@ export default function AgendaPage() {
                   placeholder="Pesquisar na agenda..."
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
-                  className="w-full max-w-sm rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+                  className="w-full max-w-sm rounded-xl border px-4 py-3"
                 />
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">Data</th>
-                      <th className="px-4 py-3">Hora</th>
-                      <th className="px-4 py-3">Cliente</th>
-                      <th className="px-4 py-3">Tipo</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Próxima ação</th>
-                      <th className="px-4 py-3">Retorno</th>
-                    </tr>
-                  </thead>
+              <div className="space-y-4">
+                {filtradas.map((visita) => (
+                  <div key={visita.id} className="rounded-xl border p-5">
+                    <div className="flex justify-between gap-4">
+                      <div>
+                        <h4 className="text-lg font-bold">
+                          {visita.clientes?.razao_social || "Cliente não informado"}
+                        </h4>
 
-                  <tbody className="divide-y divide-slate-100">
-                    {filtradas.map((visita) => (
-                      <tr key={visita.id}>
-                        <td className="px-4 py-4 font-semibold text-slate-800">
-                          {visita.data_visita}
-                        </td>
-                        <td className="px-4 py-4">{visita.hora_visita || "-"}</td>
-                        <td className="px-4 py-4">
-                          {visita.clientes?.razao_social || "-"}
-                        </td>
-                        <td className="px-4 py-4">{visita.tipo}</td>
-                        <td className="px-4 py-4">{visita.status}</td>
-                        <td className="px-4 py-4">{visita.proxima_acao || "-"}</td>
-                        <td className="px-4 py-4">{visita.data_retorno || "-"}</td>
-                      </tr>
-                    ))}
+                        <p className="text-sm text-slate-600">
+                          Data: {visita.data_visita || "-"} {visita.hora_visita || ""}
+                        </p>
 
-                    {filtradas.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="px-4 py-8 text-center text-slate-500"
+                        <p className="text-sm text-slate-600">
+                          Tipo: {visita.tipo || "-"} | Status: {visita.status || "-"}
+                        </p>
+
+                        <p className="text-sm text-slate-600">
+                          Prioridade: {visita.prioridade || "Normal"}
+                        </p>
+
+                        <p className="mt-2 text-sm">
+                          Próxima ação: {visita.proxima_acao || "-"}
+                        </p>
+
+                        <p className="text-sm">
+                          Retorno: {visita.data_retorno || "-"}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => abrirWhatsApp(visita.clientes?.whatsapp)}
+                          className="rounded-lg bg-green-100 px-4 py-2 text-green-700"
                         >
-                          Nenhum compromisso encontrado.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                          WhatsApp
+                        </button>
+
+                        <button
+                          onClick={() => abrirMaps(visita.clientes)}
+                          className="rounded-lg bg-blue-100 px-4 py-2 text-blue-700"
+                        >
+                          Maps
+                        </button>
+
+                        {!visita.concluida && (
+                          <button
+                            onClick={() => concluirVisita(visita.id)}
+                            className="rounded-lg bg-slate-900 px-4 py-2 text-white"
+                          >
+                            Concluir
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {filtradas.length === 0 && (
+                  <p className="py-8 text-center text-slate-500">
+                    Nenhum compromisso encontrado.
+                  </p>
+                )}
               </div>
             </section>
           </div>

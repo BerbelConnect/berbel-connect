@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 
 type Cliente = { id: string; razao_social: string };
 
@@ -12,11 +13,13 @@ type Produto = {
   nome: string;
   preco: number;
   comissao_percentual: number;
+  fornecedores?: { nome?: string } | null;
 };
 
 type ItemPedido = {
   produto_id: string;
   produto_nome: string;
+  fornecedor_nome: string;
   quantidade: string;
   valor_unitario: string;
   valor_total: string;
@@ -43,6 +46,7 @@ const pedidoInicial: PedidoForm = {
 const itemInicial: ItemPedido = {
   produto_id: "",
   produto_nome: "",
+  fornecedor_nome: "",
   quantidade: "1",
   valor_unitario: "",
   valor_total: "",
@@ -68,7 +72,7 @@ export default function PedidosPage() {
 
     const { data: produtosData } = await supabase
       .from("produtos")
-      .select("id, nome, preco, comissao_percentual")
+      .select("id, nome, preco, comissao_percentual, fornecedores(nome)")
       .order("nome");
 
     const { data: pedidosData, error } = await supabase
@@ -79,14 +83,15 @@ export default function PedidosPage() {
     if (error) return alert(error.message);
 
     setClientes(clientesData || []);
-    setProdutos(produtosData || []);
+    setProdutos((produtosData || []) as any);
     setPedidos(pedidosData || []);
   }
 
   useEffect(() => {
     carregarDados();
   }, []);
-    function recalcularItem(item: ItemPedido) {
+
+  function recalcularItem(item: ItemPedido) {
     const quantidade = Number(item.quantidade || 0);
     const valorUnitario = Number(item.valor_unitario || 0);
     const comissao = Number(item.comissao_percentual || 0);
@@ -102,12 +107,13 @@ export default function PedidosPage() {
   }
 
   function selecionarProduto(produtoId: string) {
-    const produto = produtos.find((p) => p.id === produtoId);
+    const produto: any = produtos.find((p) => p.id === produtoId);
 
     const novoItem = recalcularItem({
       ...itemAtual,
       produto_id: produtoId,
       produto_nome: produto?.nome || "",
+      fornecedor_nome: produto?.fornecedores?.nome || "",
       valor_unitario: String(produto?.preco || ""),
       comissao_percentual: String(produto?.comissao_percentual || ""),
     });
@@ -182,14 +188,49 @@ export default function PedidosPage() {
       .from("pedido_itens")
       .insert(itensPayload);
 
+    if (erroItens) {
+      setCarregando(false);
+      return alert(erroItens.message);
+    }
+
+    await supabase.from("contas_receber").insert({
+      pedido_id: pedidoCriado.id,
+      cliente_id: form.cliente_id,
+      descricao: `Pedido ${form.numero || pedidoCriado.id}`,
+      valor: valorTotalPedido,
+      vencimento: null,
+      recebimento: null,
+      status: "Pendente",
+      forma_pagamento: "",
+      observacoes: form.observacoes,
+    });
+
+    const comissoesPayload = itens.map((item) => ({
+      pedido_id: pedidoCriado.id,
+      cliente_id: form.cliente_id,
+      produto_id: item.produto_id,
+      produto_nome: item.produto_nome,
+      empresa: item.fornecedor_nome || item.produto_nome,
+      percentual: Number(item.comissao_percentual || 0),
+      valor_base: Number(item.valor_total || 0),
+      valor_comissao: Number(item.valor_comissao || 0),
+      previsao_recebimento: null,
+      data_recebimento: null,
+      status: "Pendente",
+      observacoes: `Comissão gerada automaticamente pelo pedido ${
+        form.numero || pedidoCriado.id
+      }`,
+    }));
+
+    await supabase.from("comissoes_financeiro").insert(comissoesPayload);
+
     setCarregando(false);
-
-    if (erroItens) return alert(erroItens.message);
-
     setForm(pedidoInicial);
     setItens([]);
     setItemAtual(itemInicial);
     carregarDados();
+
+    alert("Pedido salvo com financeiro e comissões gerados automaticamente.");
   }
 
   async function excluirPedido(id?: string) {
@@ -212,7 +253,8 @@ export default function PedidosPage() {
         .includes(texto)
     );
   }, [pedidos, busca]);
-    return (
+
+  return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
@@ -236,7 +278,9 @@ export default function PedidosPage() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <select
                   value={form.cliente_id}
-                  onChange={(e) => setForm({ ...form, cliente_id: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, cliente_id: e.target.value })
+                  }
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 >
                   <option value="">Selecione o cliente</option>
@@ -257,7 +301,9 @@ export default function PedidosPage() {
                 <input
                   type="date"
                   value={form.data_pedido}
-                  onChange={(e) => setForm({ ...form, data_pedido: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, data_pedido: e.target.value })
+                  }
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 />
 
@@ -276,7 +322,9 @@ export default function PedidosPage() {
                 <textarea
                   placeholder="Observações do pedido"
                   value={form.observacoes}
-                  onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, observacoes: e.target.value })
+                  }
                   className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
                 />
               </div>
@@ -313,7 +361,9 @@ export default function PedidosPage() {
                   label="Valor unitário"
                   value={itemAtual.valor_unitario}
                   onChange={(v) =>
-                    setItemAtual(recalcularItem({ ...itemAtual, valor_unitario: v }))
+                    setItemAtual(
+                      recalcularItem({ ...itemAtual, valor_unitario: v })
+                    )
                   }
                 />
 
@@ -327,6 +377,12 @@ export default function PedidosPage() {
                   }
                 />
               </div>
+
+              {itemAtual.fornecedor_nome && (
+                <p className="mt-3 text-sm text-slate-500">
+                  Representada: <strong>{itemAtual.fornecedor_nome}</strong>
+                </p>
+              )}
 
               <button
                 onClick={adicionarItem}
@@ -346,6 +402,7 @@ export default function PedidosPage() {
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Produto</th>
+                      <th className="px-4 py-3">Representada</th>
                       <th className="px-4 py-3">Qtd.</th>
                       <th className="px-4 py-3">Valor unit.</th>
                       <th className="px-4 py-3">Total</th>
@@ -359,6 +416,9 @@ export default function PedidosPage() {
                       <tr key={`${item.produto_id}-${index}`}>
                         <td className="px-4 py-4 font-semibold text-slate-800">
                           {item.produto_nome}
+                        </td>
+                        <td className="px-4 py-4">
+                          {item.fornecedor_nome || "-"}
                         </td>
                         <td className="px-4 py-4">{item.quantidade}</td>
                         <td className="px-4 py-4">
@@ -383,7 +443,10 @@ export default function PedidosPage() {
 
                     {itens.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                        <td
+                          colSpan={7}
+                          className="px-4 py-8 text-center text-slate-500"
+                        >
                           Nenhum item adicionado.
                         </td>
                       </tr>
@@ -465,19 +528,31 @@ export default function PedidosPage() {
                         </td>
                         <td className="px-4 py-4">{pedido.status}</td>
                         <td className="px-4 py-4">
-                          <button
-                            onClick={() => excluirPedido(pedido.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
-                            Excluir
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => gerarPedidoPDF(pedido)}
+                              className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700 hover:bg-blue-200"
+                            >
+                              PDF
+                            </button>
+
+                            <button
+                              onClick={() => excluirPedido(pedido.id)}
+                              className="rounded-lg bg-red-100 px-3 py-2 text-red-700 hover:bg-red-200"
+                            >
+                              Excluir
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
 
                     {pedidosFiltrados.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                        <td
+                          colSpan={7}
+                          className="px-4 py-8 text-center text-slate-500"
+                        >
                           Nenhum pedido encontrado.
                         </td>
                       </tr>
@@ -493,7 +568,7 @@ export default function PedidosPage() {
   );
 }
 
-function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
+function Card({ titulo, valor }: { titulo: string | number; valor: string | number }) {
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm">
       <p className="text-sm text-slate-500">{titulo}</p>

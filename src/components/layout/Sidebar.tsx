@@ -10,6 +10,10 @@ const menu = [
   { nome: "Comissões", href: "/comissoes" },
   { nome: "Agenda", href: "/agenda" },
   { nome: "Financeiro", href: "/financeiro" },
+  { nome: "Contas a Receber", href: "/financeiro/contas-receber" },
+  { nome: "Contas a Pagar", href: "/financeiro/contas-pagar" },
+  { nome: "Fluxo de Caixa", href: "/financeiro/fluxo-caixa" },
+  { nome: "Comissões Financeiras", href: "/financeiro/comissoes" },
 ];
 
 export function Sidebar() {
