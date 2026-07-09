@@ -56,6 +56,12 @@ const menu = [
   },
 
   {
+  nome: "Pedidos Offline",
+  href: "/pedidos/offline",
+  perfis: ["Administrador", "Representante", "Assistente"],
+},
+
+  {
     nome: "Agenda Inteligente",
     href: "/agenda",
     perfis: ["Administrador", "Representante", "Assistente"],
@@ -133,7 +139,7 @@ const menu = [
     href: "/exportacoes",
     perfis: ["Administrador", "Financeiro"],
   },
-  {
+  {   
     nome: "Usuários e Perfis",
     href: "/usuarios",
     perfis: ["Administrador"],

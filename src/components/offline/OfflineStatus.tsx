@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { contarPedidosOffline } from "@/lib/offline/pedidosOffline";
 import { sincronizarPedidosOffline } from "@/lib/offline/sincronizarPedidosOffline";
@@ -81,13 +82,22 @@ export function OfflineStatus() {
             Internet voltou. Você já pode enviar os pedidos para o sistema.
           </p>
 
-          <button
-            onClick={sincronizarAgora}
-            disabled={sincronizando}
-            className="rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={sincronizarAgora}
+              disabled={sincronizando}
+              className="rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
+            </button>
+
+            <Link
+              href="/pedidos/offline"
+              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+            >
+              Ver offline
+            </Link>
+          </div>
         </div>
       )}
     </div>
