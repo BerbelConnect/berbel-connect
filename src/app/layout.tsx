@@ -5,6 +5,22 @@ import { AuthGuard } from "@/components/auth/AuthGuard";
 export const metadata: Metadata = {
   title: "Berbel Connect",
   description: "CRM e ERP comercial para representantes",
+
+  // PWA
+  manifest: "/manifest.json",
+
+  themeColor: "#0f172a",
+
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Berbel Connect",
+  },
+
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/icon-192.png",
+  },
 };
 
 export default function RootLayout({

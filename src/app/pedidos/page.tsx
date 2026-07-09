@@ -6,70 +6,17 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 
-type Cliente = {
-  id: string;
-  razao_social: string;
-};
+const statusOpcoes = [
+  "Todos",
+  "Orçamento",
+  "Pedido",
+  "Em produção",
+  "Faturado",
+  "Entregue",
+  "Cancelado",
+];
 
-type Produto = {
-  id: string;
-  nome: string;
-  preco: number;
-  preco_custo: number;
-  estoque_atual: number;
-  comissao_percentual: number;
-  modelo_negocio: string;
-  representada_id: string | null;
-  representadas?: {
-    nome_fantasia?: string;
-  } | null;
-};
-
-type ItemPedido = {
-  produto_id: string;
-  produto_nome: string;
-  representada_id: string | null;
-  representada_nome: string;
-  modelo_negocio: string;
-  quantidade: string;
-  valor_unitario: string;
-  preco_custo: string;
-  valor_total: string;
-  comissao_percentual: string;
-  valor_comissao: string;
-  lucro_previsto: string;
-};
-
-type PedidoForm = {
-  cliente_id: string;
-  numero: string;
-  data_pedido: string;
-  status: string;
-  observacoes: string;
-};
-
-const pedidoInicial: PedidoForm = {
-  cliente_id: "",
-  numero: "",
-  data_pedido: new Date().toISOString().slice(0, 10),
-  status: "Orçamento",
-  observacoes: "",
-};
-
-const itemInicial: ItemPedido = {
-  produto_id: "",
-  produto_nome: "",
-  representada_id: null,
-  representada_nome: "",
-  modelo_negocio: "Representação",
-  quantidade: "1",
-  valor_unitario: "",
-  preco_custo: "",
-  valor_total: "",
-  comissao_percentual: "",
-  valor_comissao: "",
-  lucro_previsto: "",
-};
+const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
 
 function moeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -78,29 +25,39 @@ function moeda(valor: any) {
   });
 }
 
-export default function PedidosPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function statusClasse(status: string) {
+  if (status === "Entregue") return "bg-green-100 text-green-700";
+  if (status === "Faturado") return "bg-blue-100 text-blue-700";
+  if (status === "Em produção") return "bg-orange-100 text-orange-700";
+  if (status === "Cancelado") return "bg-red-100 text-red-700";
+  if (status === "Pedido") return "bg-yellow-100 text-yellow-700";
+  return "bg-slate-100 text-slate-700";
+}
+
+function dataBR(data?: string | null) {
+  if (!data) return "-";
+  return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
+}
+
+export default function ConsultaPedidosPage() {
+  const [clientes, setClientes] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
-  const [form, setForm] = useState<PedidoForm>(pedidoInicial);
-  const [itemAtual, setItemAtual] = useState<ItemPedido>(itemInicial);
-  const [itens, setItens] = useState<ItemPedido[]>([]);
+  const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
-  const [carregando, setCarregando] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState("Todos");
+  const [filtroTipo, setFiltroTipo] = useState("Todos");
+  const [filtroPeriodo, setFiltroPeriodo] = useState("Todos");
+  const [editando, setEditando] = useState<any | null>(null);
 
   async function carregarDados() {
     const clientesResp = await supabase
       .from("clientes")
       .select("id, razao_social")
       .order("razao_social");
-
-    const produtosResp = await supabase
-      .from("produtos")
-      .select(
-        "id, nome, preco, preco_custo, estoque_atual, comissao_percentual, modelo_negocio, representada_id, representadas(nome_fantasia)"
-      )
-      .eq("ativo", true)
-      .order("nome");
 
     const pedidosResp = await supabase
       .from("pedidos")
@@ -128,11 +85,9 @@ export default function PedidosPage() {
       .order("created_at", { ascending: false });
 
     if (clientesResp.error) return alert(clientesResp.error.message);
-    if (produtosResp.error) return alert(produtosResp.error.message);
     if (pedidosResp.error) return alert(pedidosResp.error.message);
 
     setClientes(clientesResp.data || []);
-    setProdutos((produtosResp.data || []) as any);
     setPedidos(pedidosResp.data || []);
   }
 
@@ -140,212 +95,161 @@ export default function PedidosPage() {
     carregarDados();
   }, []);
 
-  async function gerarNumeroPedido() {
-    const { data, error } = await supabase.rpc("gerar_numero_pedido");
+  async function alterarStatus(pedido: any, status: string) {
+    const payload: any = { status };
 
-    if (error) {
-      console.error(error);
-      return `PED-${Date.now()}`;
+    if (status === "Entregue" && !pedido.data_entrega_real) {
+      payload.data_entrega_real = hojeISO();
     }
 
-    return data;
+    const { error } = await supabase
+      .from("pedidos")
+      .update(payload)
+      .eq("id", pedido.id);
+
+    if (error) return alert(error.message);
+
+    carregarDados();
   }
 
-  function recalcularItem(item: ItemPedido) {
-    const quantidade = Number(item.quantidade || 0);
-    const valorUnitario = Number(item.valor_unitario || 0);
-    const custo = Number(item.preco_custo || 0);
-    const percentual = Number(item.comissao_percentual || 0);
+  function abrirEdicao(pedido: any) {
+    setEditando({
+      id: pedido.id,
+      cliente_id: pedido.cliente_id || "",
+      numero: pedido.numero || "",
+      data_pedido: pedido.data_pedido || hojeISO(),
+      data_entrega_prevista: pedido.data_entrega_prevista || "",
+      data_entrega_real: pedido.data_entrega_real || "",
+      status: pedido.status || "Pedido",
+      tipo_operacao: pedido.tipo_operacao || "Representação",
+      observacoes: pedido.observacoes || "",
+    });
 
-    const valorTotal = quantidade * valorUnitario;
-    const valorComissao = valorTotal * (percentual / 100);
-    const lucroPrevisto =
-      item.modelo_negocio === "Revenda Própria"
-        ? valorTotal - quantidade * custo
-        : 0;
-
-    return {
-      ...item,
-      valor_total: String(valorTotal),
-      valor_comissao: String(valorComissao),
-      lucro_previsto: String(lucroPrevisto),
-    };
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function selecionarProduto(produtoId: string) {
-    const produto: any = produtos.find((p) => p.id === produtoId);
+  async function salvarEdicao() {
+    if (!editando?.id) return;
+    if (!editando.cliente_id) return alert("Selecione o cliente.");
 
-    if (!produto) {
-      setItemAtual(itemInicial);
+    const { error } = await supabase
+      .from("pedidos")
+      .update({
+        cliente_id: editando.cliente_id,
+        numero: editando.numero,
+        data_pedido: editando.data_pedido,
+        data_entrega_prevista: editando.data_entrega_prevista || null,
+        data_entrega_real: editando.data_entrega_real || null,
+        status: editando.status,
+        tipo_operacao: editando.tipo_operacao,
+        observacoes: editando.observacoes,
+      })
+      .eq("id", editando.id);
+
+    if (error) return alert(error.message);
+
+    setEditando(null);
+    carregarDados();
+    alert("Pedido atualizado com sucesso.");
+  }
+    function enviarWhatsApp(pedido: any) {
+    const numero = pedido.clientes?.whatsapp?.replace(/\D/g, "");
+
+    if (!numero) {
+      alert("Cliente sem WhatsApp cadastrado.");
       return;
     }
 
-    const novoItem = recalcularItem({
-      ...itemAtual,
-      produto_id: produto.id,
-      produto_nome: produto.nome || "",
-      representada_id: produto.representada_id || null,
-      representada_nome: produto.representadas?.nome_fantasia || "",
-      modelo_negocio: produto.modelo_negocio || "Representação",
-      valor_unitario: String(produto.preco || ""),
-      preco_custo: String(produto.preco_custo || ""),
-      comissao_percentual: String(produto.comissao_percentual || ""),
-    });
+    const itensTexto =
+      pedido.pedido_itens
+        ?.map(
+          (item: any, index: number) =>
+            `${index + 1}. ${
+              item.produto_nome || item.produtos?.nome || "-"
+            } | ${item.representada_nome || "-"} | Qtd: ${
+              item.quantidade
+            } | Total: ${moeda(item.valor_total)}`
+        )
+        .join("\n") || "-";
 
-    setItemAtual(novoItem);
-  }
+    const mensagem = `
+Olá ${pedido.clientes?.razao_social || ""}, tudo bem?
 
-  function adicionarItem() {
-    if (!itemAtual.produto_id) return alert("Selecione um produto.");
-    if (!itemAtual.quantidade) return alert("Informe a quantidade.");
+Segue o resumo do pedido ${pedido.numero || pedido.id}.
 
-    setItens([...itens, itemAtual]);
-    setItemAtual(itemInicial);
-  }
+Status: ${pedido.status || "-"}
+Tipo: ${pedido.tipo_operacao || "-"}
+Previsão de entrega: ${dataBR(pedido.data_entrega_prevista)}
+Valor total: ${moeda(pedido.valor_total)}
 
-  function removerItem(index: number) {
-    setItens(itens.filter((_, i) => i !== index));
-  }
+Itens:
+${itensTexto}
 
-  const valorTotalPedido = itens.reduce(
-    (total, item) => total + Number(item.valor_total || 0),
-    0
-  );
+Qualquer dúvida estou à disposição.
 
-  const valorTotalComissao = itens.reduce(
-    (total, item) => total + Number(item.valor_comissao || 0),
-    0
-  );
+Marcelo Henrique Berbel
+Berbel Connect
+`;
 
-  const valorTotalRevenda = itens
-    .filter((item) => item.modelo_negocio === "Revenda Própria")
-    .reduce((total, item) => total + Number(item.valor_total || 0), 0);
-
-  const lucroPrevistoRevenda = itens
-    .filter((item) => item.modelo_negocio === "Revenda Própria")
-    .reduce((total, item) => total + Number(item.lucro_previsto || 0), 0);
-
-  async function salvarPedido() {
-    if (!form.cliente_id) return alert("Selecione o cliente.");
-    if (itens.length === 0) return alert("Adicione ao menos um produto.");
-
-    setCarregando(true);
-
-    const numeroFinal = form.numero.trim()
-      ? form.numero.trim()
-      : await gerarNumeroPedido();
-
-    const temRepresentacao = itens.some(
-      (item) => item.modelo_negocio !== "Revenda Própria"
+    window.open(
+      `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`,
+      "_blank"
     );
+  }
 
-    const temRevenda = itens.some(
-      (item) => item.modelo_negocio === "Revenda Própria"
-    );
+  async function duplicarPedido(pedido: any) {
+    if (!confirm(`Deseja duplicar o pedido ${pedido.numero || pedido.id}?`)) {
+      return;
+    }
 
-    const tipoOperacao =
-      temRepresentacao && temRevenda
-        ? "Misto"
-        : temRevenda
-        ? "Revenda Própria"
-        : "Representação";
+    const { data: novoNumero } = await supabase.rpc("gerar_numero_pedido");
 
     const { data: pedidoCriado, error: erroPedido } = await supabase
       .from("pedidos")
       .insert({
-        cliente_id: form.cliente_id,
-        numero: numeroFinal,
-        data_pedido: form.data_pedido,
-        status: form.status,
-        observacoes: form.observacoes,
-        tipo_operacao: tipoOperacao,
-        valor_total: valorTotalPedido,
-        valor_comissao: valorTotalComissao,
-        quantidade: itens.reduce(
-          (total, item) => total + Number(item.quantidade || 0),
-          0
-        ),
+        cliente_id: pedido.cliente_id,
+        numero: novoNumero || `PED-${Date.now()}`,
+        data_pedido: hojeISO(),
+        data_entrega_prevista: pedido.data_entrega_prevista || null,
+        data_entrega_real: null,
+        status: "Orçamento",
+        observacoes: pedido.observacoes || "",
+        tipo_operacao: pedido.tipo_operacao || "Representação",
+        valor_total: Number(pedido.valor_total || 0),
+        valor_comissao: Number(pedido.valor_comissao || 0),
+        quantidade: Number(pedido.quantidade || 0),
         valor_unitario: 0,
       })
       .select()
       .single();
 
-    if (erroPedido) {
-      setCarregando(false);
-      return alert(erroPedido.message);
-    }
+    if (erroPedido) return alert(erroPedido.message);
 
-    const itensPayload = itens.map((item) => ({
-      pedido_id: pedidoCriado.id,
-      produto_id: item.produto_id,
-      produto_nome: item.produto_nome,
-      representada_id: item.representada_id,
-      representada_nome: item.representada_nome,
-      modelo_negocio: item.modelo_negocio,
-      quantidade: Number(item.quantidade || 0),
-      valor_unitario: Number(item.valor_unitario || 0),
-      preco_custo: Number(item.preco_custo || 0),
-      valor_total: Number(item.valor_total || 0),
-      comissao_percentual: Number(item.comissao_percentual || 0),
-      valor_comissao: Number(item.valor_comissao || 0),
-      lucro_previsto: Number(item.lucro_previsto || 0),
-    }));
+    const itens = pedido.pedido_itens || [];
 
-    const { error: erroItens } = await supabase
-      .from("pedido_itens")
-      .insert(itensPayload);
-
-    if (erroItens) {
-      setCarregando(false);
-      return alert(erroItens.message);
-    }
-
-    if (valorTotalRevenda > 0) {
-      await supabase.from("contas_receber").insert({
+    if (itens.length > 0) {
+      const itensPayload = itens.map((item: any) => ({
         pedido_id: pedidoCriado.id,
-        cliente_id: form.cliente_id,
-        descricao: `Revenda - Pedido ${numeroFinal}`,
-        valor: valorTotalRevenda,
-        vencimento: null,
-        recebimento: null,
-        status: "Pendente",
-        forma_pagamento: "",
-        observacoes: form.observacoes,
-      });
-    }
-
-    const comissoesPayload = itens
-      .filter((item) => Number(item.valor_comissao || 0) > 0)
-      .map((item) => ({
-        pedido_id: pedidoCriado.id,
-        cliente_id: form.cliente_id,
         produto_id: item.produto_id,
-        produto_nome: item.produto_nome,
-        empresa:
-          item.representada_nome ||
-          (item.modelo_negocio === "Revenda Própria"
-            ? "Revenda Própria"
-            : "Representação"),
-        percentual: Number(item.comissao_percentual || 0),
-        valor_base: Number(item.valor_total || 0),
+        produto_nome: item.produto_nome || item.produtos?.nome || "",
+        representada_id: item.representada_id || null,
+        representada_nome:
+          item.representada_nome || item.representadas?.nome_fantasia || "",
+        modelo_negocio: item.modelo_negocio || "Representação",
+        quantidade: Number(item.quantidade || 0),
+        valor_unitario: Number(item.valor_unitario || 0),
+        preco_custo: Number(item.preco_custo || 0),
+        valor_total: Number(item.valor_total || 0),
+        comissao_percentual: Number(item.comissao_percentual || 0),
         valor_comissao: Number(item.valor_comissao || 0),
-        previsao_recebimento: null,
-        data_recebimento: null,
-        status: "Pendente",
-        observacoes: `Comissão gerada automaticamente pelo pedido ${numeroFinal}`,
+        lucro_previsto: Number(item.lucro_previsto || 0),
       }));
 
-    if (comissoesPayload.length > 0) {
-      await supabase.from("comissoes_financeiro").insert(comissoesPayload);
+      await supabase.from("pedido_itens").insert(itensPayload);
     }
 
-    setCarregando(false);
-    setForm(pedidoInicial);
-    setItens([]);
-    setItemAtual(itemInicial);
     carregarDados();
-
-    alert(`Pedido ${numeroFinal} salvo com sucesso.`);
+    alert(`Pedido duplicado com sucesso: ${novoNumero}`);
   }
 
   async function excluirPedido(id?: string) {
@@ -353,16 +257,24 @@ export default function PedidosPage() {
     if (!confirm("Deseja excluir este pedido?")) return;
 
     const { error } = await supabase.from("pedidos").delete().eq("id", id);
-    if (error) return alert(error.message);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     carregarDados();
   }
 
   const pedidosFiltrados = useMemo(() => {
     const texto = busca.toLowerCase();
+    const hoje = hojeISO();
+    const agora = new Date();
 
-    return pedidos.filter((pedido) =>
-      [
+    return pedidos.filter((pedido) => {
+      const dataPedido = pedido.data_pedido || pedido.created_at?.slice(0, 10);
+
+      const bateBusca = [
         pedido.numero,
         pedido.clientes?.razao_social,
         pedido.clientes?.cnpj,
@@ -370,343 +282,486 @@ export default function PedidosPage() {
         pedido.clientes?.cidade,
         pedido.status,
         pedido.tipo_operacao,
+        pedido.pedido_itens
+          ?.map(
+            (item: any) =>
+              `${item.produto_nome || ""} ${item.representada_nome || ""}`
+          )
+          .join(" "),
       ]
         .join(" ")
         .toLowerCase()
-        .includes(texto)
-    );
-  }, [pedidos, busca]);
+        .includes(texto);
 
-  return (
+      const bateStatus =
+        filtroStatus === "Todos" || pedido.status === filtroStatus;
+
+      const bateTipo =
+        filtroTipo === "Todos" || pedido.tipo_operacao === filtroTipo;
+
+      let batePeriodo = true;
+
+      if (filtroPeriodo === "Hoje") {
+        batePeriodo = dataPedido === hoje;
+      }
+
+      if (filtroPeriodo === "Este mês") {
+        const data = new Date(dataPedido);
+        batePeriodo =
+          data.getMonth() === agora.getMonth() &&
+          data.getFullYear() === agora.getFullYear();
+      }
+
+      if (filtroPeriodo === "Este ano") {
+        const data = new Date(dataPedido);
+        batePeriodo = data.getFullYear() === agora.getFullYear();
+      }
+
+      return bateBusca && bateStatus && bateTipo && batePeriodo;
+    });
+  }, [pedidos, busca, filtroStatus, filtroTipo, filtroPeriodo]);
+
+  const totalPedidos = pedidosFiltrados.reduce(
+    (total, pedido) => total + Number(pedido.valor_total || 0),
+    0
+  );
+
+  const totalComissao = pedidosFiltrados.reduce(
+    (total, pedido) => total + Number(pedido.valor_comissao || 0),
+    0
+  );
+
+  const pedidosRepresentacao = pedidosFiltrados.filter(
+    (pedido) => pedido.tipo_operacao === "Representação"
+  ).length;
+
+  const pedidosRevenda = pedidosFiltrados.filter(
+    (pedido) => pedido.tipo_operacao === "Revenda Própria"
+  ).length;
+
+  const pedidosProducao = pedidosFiltrados.filter(
+    (pedido) => pedido.status === "Em produção"
+  ).length;
+
+  const pedidosEntregues = pedidosFiltrados.filter(
+    (pedido) => pedido.status === "Entregue"
+  ).length;
+
+  const pedidosAtrasados = pedidosFiltrados.filter(
+    (pedido) =>
+      pedido.data_entrega_prevista &&
+      pedido.data_entrega_prevista < hojeISO() &&
+      pedido.status !== "Entregue" &&
+      pedido.status !== "Cancelado"
+  ).length;
+    return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader titulo="Pedidos V2" subtitulo="Berbel Connect" />
+          <PageHeader
+            titulo="Consulta de Pedidos V3"
+            subtitulo="Berbel Connect"
+          />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-              <Card titulo="Pedidos" valor={pedidos.length} />
-              <Card titulo="Total atual" valor={moeda(valorTotalPedido)} />
-              <Card titulo="Comissão atual" valor={moeda(valorTotalComissao)} />
-              <Card titulo="Lucro revenda" valor={moeda(lucroPrevistoRevenda)} />
+              <Card titulo="Pedidos" valor={pedidosFiltrados.length} />
+              <Card titulo="Total vendido" valor={moeda(totalPedidos)} />
+              <Card titulo="Comissão" valor={moeda(totalComissao)} />
+              <Card
+                titulo="Representação / Revenda"
+                valor={`${pedidosRepresentacao} / ${pedidosRevenda}`}
+              />
+              <Card titulo="Em produção" valor={pedidosProducao} />
+              <Card titulo="Entregues" valor={pedidosEntregues} />
+              <Card titulo="Atrasados" valor={pedidosAtrasados} />
             </div>
 
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
-              <h3 className="mb-5 text-xl font-bold text-slate-800">
-                Novo pedido
-              </h3>
+            {editando && (
+              <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+                <h3 className="mb-5 text-xl font-bold text-slate-800">
+                  Editar pedido {editando.numero}
+                </h3>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <select
-                  value={form.cliente_id}
-                  onChange={(e) =>
-                    setForm({ ...form, cliente_id: e.target.value })
-                  }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
-                >
-                  <option value="">Selecione o cliente</option>
-                  {clientes.map((cliente) => (
-                    <option key={cliente.id} value={cliente.id}>
-                      {cliente.razao_social}
-                    </option>
-                  ))}
-                </select>
-
-                <Campo
-                  label="Número automático se vazio"
-                  value={form.numero}
-                  onChange={(v) => setForm({ ...form, numero: v })}
-                />
-
-                <Campo
-                  label=""
-                  type="date"
-                  value={form.data_pedido}
-                  onChange={(v) => setForm({ ...form, data_pedido: v })}
-                />
-
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="rounded-xl border border-slate-200 px-4 py-3"
-                >
-                  <option>Orçamento</option>
-                  <option>Pedido</option>
-                  <option>Aprovado</option>
-                  <option>Faturado</option>
-                  <option>Cancelado</option>
-                </select>
-
-                <textarea
-                  placeholder="Observações do pedido"
-                  value={form.observacoes}
-                  onChange={(e) =>
-                    setForm({ ...form, observacoes: e.target.value })
-                  }
-                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
-                />
-              </div>
-            </section>
-
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
-              <h3 className="mb-5 text-xl font-bold text-slate-800">
-                Adicionar produto
-              </h3>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-                <select
-                  value={itemAtual.produto_id}
-                  onChange={(e) => selecionarProduto(e.target.value)}
-                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
-                >
-                  <option value="">Selecione o produto</option>
-                  {produtos.map((produto) => (
-                    <option key={produto.id} value={produto.id}>
-                      {produto.nome}
-                    </option>
-                  ))}
-                </select>
-
-                <Campo
-                  label="Quantidade"
-                  value={itemAtual.quantidade}
-                  onChange={(v) =>
-                    setItemAtual(recalcularItem({ ...itemAtual, quantidade: v }))
-                  }
-                />
-
-                <Campo
-                  label="Valor unitário"
-                  value={itemAtual.valor_unitario}
-                  onChange={(v) =>
-                    setItemAtual(
-                      recalcularItem({ ...itemAtual, valor_unitario: v })
-                    )
-                  }
-                />
-
-                <Campo
-                  label="Comissão %"
-                  value={itemAtual.comissao_percentual}
-                  onChange={(v) =>
-                    setItemAtual(
-                      recalcularItem({ ...itemAtual, comissao_percentual: v })
-                    )
-                  }
-                />
-              </div>
-
-              {itemAtual.produto_id && (
-                <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
-                  <p>
-                    Representada:{" "}
-                    <strong>{itemAtual.representada_nome || "-"}</strong>
-                  </p>
-                  <p>
-                    Modelo: <strong>{itemAtual.modelo_negocio}</strong>
-                  </p>
-                  <p>
-                    Total do item: <strong>{moeda(itemAtual.valor_total)}</strong>
-                  </p>
-                  <p>
-                    Comissão:{" "}
-                    <strong className="text-green-700">
-                      {moeda(itemAtual.valor_comissao)}
-                    </strong>
-                  </p>
-                  {itemAtual.modelo_negocio === "Revenda Própria" && (
-                    <p>
-                      Lucro previsto:{" "}
-                      <strong className="text-blue-700">
-                        {moeda(itemAtual.lucro_previsto)}
-                      </strong>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <button
-                onClick={adicionarItem}
-                className="mt-5 rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800"
-              >
-                Adicionar item
-              </button>
-            </section>
-
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
-              <h3 className="mb-5 text-xl font-bold text-slate-800">
-                Itens do pedido
-              </h3>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">Produto</th>
-                      <th className="px-4 py-3">Representada</th>
-                      <th className="px-4 py-3">Modelo</th>
-                      <th className="px-4 py-3">Qtd.</th>
-                      <th className="px-4 py-3">Unit.</th>
-                      <th className="px-4 py-3">Total</th>
-                      <th className="px-4 py-3">Comissão</th>
-                      <th className="px-4 py-3">Ação</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {itens.map((item, index) => (
-                      <tr key={`${item.produto_id}-${index}`}>
-                        <td className="px-4 py-4 font-semibold">
-                          {item.produto_nome}
-                        </td>
-                        <td className="px-4 py-4">
-                          {item.representada_nome || "-"}
-                        </td>
-                        <td className="px-4 py-4">{item.modelo_negocio}</td>
-                        <td className="px-4 py-4">{item.quantidade}</td>
-                        <td className="px-4 py-4">{moeda(item.valor_unitario)}</td>
-                        <td className="px-4 py-4">{moeda(item.valor_total)}</td>
-                        <td className="px-4 py-4 text-green-700">
-                          {moeda(item.valor_comissao)}
-                        </td>
-                        <td className="px-4 py-4">
-                          <button
-                            onClick={() => removerItem(index)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
-                            Remover
-                          </button>
-                        </td>
-                      </tr>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <select
+                    value={editando.cliente_id}
+                    onChange={(e) =>
+                      setEditando({ ...editando, cliente_id: e.target.value })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    <option value="">Selecione o cliente</option>
+                    {clientes.map((cliente) => (
+                      <option key={cliente.id} value={cliente.id}>
+                        {cliente.razao_social}
+                      </option>
                     ))}
+                  </select>
 
-                    {itens.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="px-4 py-8 text-center text-slate-500"
-                        >
-                          Nenhum item adicionado.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  <input
+                    value={editando.numero}
+                    onChange={(e) =>
+                      setEditando({ ...editando, numero: e.target.value })
+                    }
+                    placeholder="Número"
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
 
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t pt-5">
-                <div>
-                  <p className="text-sm text-slate-500">Total do pedido</p>
-                  <strong className="text-2xl">{moeda(valorTotalPedido)}</strong>
+                  <input
+                    type="date"
+                    value={editando.data_pedido}
+                    onChange={(e) =>
+                      setEditando({
+                        ...editando,
+                        data_pedido: e.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
+
+                  <select
+                    value={editando.status}
+                    onChange={(e) =>
+                      setEditando({ ...editando, status: e.target.value })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    {statusOpcoes
+                      .filter((s) => s !== "Todos")
+                      .map((status) => (
+                        <option key={status}>{status}</option>
+                      ))}
+                  </select>
+
+                  <select
+                    value={editando.tipo_operacao}
+                    onChange={(e) =>
+                      setEditando({
+                        ...editando,
+                        tipo_operacao: e.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    {tipoOpcoes
+                      .filter((t) => t !== "Todos")
+                      .map((tipo) => (
+                        <option key={tipo}>{tipo}</option>
+                      ))}
+                  </select>
+
+                  <input
+                    type="date"
+                    value={editando.data_entrega_prevista}
+                    onChange={(e) =>
+                      setEditando({
+                        ...editando,
+                        data_entrega_prevista: e.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
+
+                  <input
+                    type="date"
+                    value={editando.data_entrega_real}
+                    onChange={(e) =>
+                      setEditando({
+                        ...editando,
+                        data_entrega_real: e.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
+
+                  <textarea
+                    value={editando.observacoes}
+                    onChange={(e) =>
+                      setEditando({
+                        ...editando,
+                        observacoes: e.target.value,
+                      })
+                    }
+                    placeholder="Observações"
+                    className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
+                  />
                 </div>
 
-                <div>
-                  <p className="text-sm text-slate-500">Comissão prevista</p>
-                  <strong className="text-2xl text-green-700">
-                    {moeda(valorTotalComissao)}
-                  </strong>
-                </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  Os campos de data acima são: data do pedido, previsão de entrega e entrega real.
+                </p>
 
-                <div>
-                  <p className="text-sm text-slate-500">Revenda própria</p>
-                  <strong className="text-2xl text-blue-700">
-                    {moeda(valorTotalRevenda)}
-                  </strong>
-                </div>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    onClick={salvarEdicao}
+                    className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white"
+                  >
+                    Salvar alterações
+                  </button>
 
-                <button
-                  onClick={salvarPedido}
-                  disabled={carregando}
-                  className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800"
+                  <button
+                    onClick={() => setEditando(null)}
+                    className="rounded-xl border px-6 py-3 font-semibold"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </section>
+            )}
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Pesquisar pedido..."
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                />
+
+                <select
+                  value={filtroStatus}
+                  onChange={(e) => setFiltroStatus(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
                 >
-                  {carregando ? "Salvando..." : "Salvar pedido"}
-                </button>
+                  {statusOpcoes.map((status) => (
+                    <option key={status}>{status}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filtroTipo}
+                  onChange={(e) => setFiltroTipo(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  {tipoOpcoes.map((tipo) => (
+                    <option key={tipo}>{tipo}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filtroPeriodo}
+                  onChange={(e) => setFiltroPeriodo(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  <option>Todos</option>
+                  <option>Hoje</option>
+                  <option>Este mês</option>
+                  <option>Este ano</option>
+                </select>
               </div>
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <h3 className="text-xl font-bold text-slate-800">
-                  Pedidos cadastrados
-                </h3>
+              <h2 className="mb-6 text-2xl font-bold text-slate-800">
+                Pedidos cadastrados
+              </h2>
 
-                <input
-                  placeholder="Pesquisar pedido..."
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  className="w-full max-w-sm rounded-xl border px-4 py-3"
-                />
-              </div>
+              <div className="space-y-4">
+                {pedidosFiltrados.map((pedido) => (
+                  <div key={pedido.id} className="rounded-2xl border p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">
+                          Pedido {pedido.numero || pedido.id}
+                        </h3>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">Número</th>
-                      <th className="px-4 py-3">Cliente</th>
-                      <th className="px-4 py-3">Tipo</th>
-                      <th className="px-4 py-3">Itens</th>
-                      <th className="px-4 py-3">Total</th>
-                      <th className="px-4 py-3">Comissão</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Ações</th>
-                    </tr>
-                  </thead>
+                        <p className="text-sm text-slate-600">
+                          Cliente: {pedido.clientes?.razao_social || "-"}
+                        </p>
 
-                  <tbody className="divide-y divide-slate-100">
-                    {pedidosFiltrados.map((pedido) => (
-                      <tr key={pedido.id}>
-                        <td className="px-4 py-4 font-semibold">
-                          {pedido.numero || "-"}
-                        </td>
-                        <td className="px-4 py-4">
-                          {pedido.clientes?.razao_social || "-"}
-                        </td>
-                        <td className="px-4 py-4">
-                          {pedido.tipo_operacao || "-"}
-                        </td>
-                        <td className="px-4 py-4">
-                          {pedido.pedido_itens?.length || 0}
-                        </td>
-                        <td className="px-4 py-4">{moeda(pedido.valor_total)}</td>
-                        <td className="px-4 py-4 text-green-700">
-                          {moeda(pedido.valor_comissao)}
-                        </td>
-                        <td className="px-4 py-4">{pedido.status}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => gerarPedidoPDF(pedido)}
-                              className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700"
-                            >
-                              PDF
-                            </button>
+                        <p className="text-sm text-slate-600">
+                          CNPJ: {pedido.clientes?.cnpj || "-"}
+                        </p>
 
-                            <button
-                              onClick={() => excluirPedido(pedido.id)}
-                              className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                            >
-                              Excluir
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                        <p className="text-sm text-slate-600">
+                          Endereço: {pedido.clientes?.endereco || "-"},{" "}
+                          {pedido.clientes?.numero || "-"} -{" "}
+                          {pedido.clientes?.bairro || "-"} -{" "}
+                          {pedido.clientes?.cidade || "-"}/
+                          {pedido.clientes?.estado || "-"}
+                        </p>
 
-                    {pedidosFiltrados.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="px-4 py-8 text-center text-slate-500"
-                        >
-                          Nenhum pedido encontrado.
-                        </td>
-                      </tr>
+                        <p className="text-sm text-slate-600">
+                          Telefone: {pedido.clientes?.telefone || "-"} | WhatsApp:{" "}
+                          {pedido.clientes?.whatsapp || "-"}
+                        </p>
+
+                        <p className="mt-2 text-sm text-slate-600">
+                          Tipo: {pedido.tipo_operacao || "-"}
+                        </p>
+
+                        <p className="text-sm text-slate-600">
+                          Previsão de entrega:{" "}
+                          <strong>{dataBR(pedido.data_entrega_prevista)}</strong>
+                        </p>
+
+                        <p className="text-sm text-slate-600">
+                          Entrega real:{" "}
+                          <strong>{dataBR(pedido.data_entrega_real)}</strong>
+                        </p>
+
+                        <div className="mt-2 flex items-center gap-3">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasse(
+                              pedido.status
+                            )}`}
+                          >
+                            {pedido.status || "-"}
+                          </span>
+
+                          <select
+                            value={pedido.status || "Orçamento"}
+                            onChange={(e) =>
+                              alterarStatus(pedido, e.target.value)
+                            }
+                            className="rounded-lg border px-3 py-2 text-xs"
+                          >
+                            {statusOpcoes
+                              .filter((s) => s !== "Todos")
+                              .map((status) => (
+                                <option key={status}>{status}</option>
+                              ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-blue-700">
+                          {moeda(pedido.valor_total)}
+                        </p>
+
+                        <p className="text-sm font-semibold text-green-700">
+                          Comissão: {moeda(pedido.valor_comissao)}
+                        </p>
+
+                        <p className="text-xs text-slate-500">
+                          Itens: {pedido.pedido_itens?.length || 0}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        onClick={() =>
+                          setPedidoAberto(
+                            pedidoAberto === pedido.id ? null : pedido.id
+                          )
+                        }
+                        className="rounded-lg bg-slate-900 px-4 py-2 text-white"
+                      >
+                        {pedidoAberto === pedido.id
+                          ? "Ocultar itens"
+                          : "Ver itens"}
+                      </button>
+
+                      <button
+                        onClick={() => abrirEdicao(pedido)}
+                        className="rounded-lg bg-amber-500 px-4 py-2 text-white"
+                      >
+                        Editar
+                      </button>
+
+                      <button
+                        onClick={() => duplicarPedido(pedido)}
+                        className="rounded-lg bg-purple-600 px-4 py-2 text-white"
+                      >
+                        Duplicar
+                      </button>
+
+                      <button
+                        onClick={() => gerarPedidoPDF(pedido)}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+                      >
+                        PDF
+                      </button>
+
+                      <button
+                        onClick={() => enviarWhatsApp(pedido)}
+                        className="rounded-lg bg-green-600 px-4 py-2 text-white"
+                      >
+                        WhatsApp
+                      </button>
+
+                      <button
+                        onClick={() => excluirPedido(pedido.id)}
+                        className="rounded-lg bg-red-600 px-4 py-2 text-white"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+
+                    {pedidoAberto === pedido.id && (
+                      <div className="mt-6 overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 text-slate-500">
+                            <tr>
+                              <th className="px-4 py-3">Produto</th>
+                              <th className="px-4 py-3">Representada</th>
+                              <th className="px-4 py-3">Modelo</th>
+                              <th className="px-4 py-3">Qtd.</th>
+                              <th className="px-4 py-3">Unit.</th>
+                              <th className="px-4 py-3">Total</th>
+                              <th className="px-4 py-3">Comissão</th>
+                            </tr>
+                          </thead>
+
+                          <tbody className="divide-y divide-slate-100">
+                            {pedido.pedido_itens?.map((item: any) => (
+                              <tr key={item.id}>
+                                <td className="px-4 py-4 font-semibold">
+                                  {item.produto_nome ||
+                                    item.produtos?.nome ||
+                                    "-"}
+                                </td>
+                                <td className="px-4 py-4">
+                                  {item.representada_nome ||
+                                    item.representadas?.nome_fantasia ||
+                                    "-"}
+                                </td>
+                                <td className="px-4 py-4">
+                                  {item.modelo_negocio || "-"}
+                                </td>
+                                <td className="px-4 py-4">
+                                  {item.quantidade}
+                                </td>
+                                <td className="px-4 py-4">
+                                  {moeda(item.valor_unitario)}
+                                </td>
+                                <td className="px-4 py-4 font-semibold">
+                                  {moeda(item.valor_total)}
+                                </td>
+                                <td className="px-4 py-4 font-semibold text-green-700">
+                                  {moeda(item.valor_comissao)}
+                                </td>
+                              </tr>
+                            ))}
+
+                            {(!pedido.pedido_itens ||
+                              pedido.pedido_itens.length === 0) && (
+                              <tr>
+                                <td
+                                  colSpan={7}
+                                  className="px-4 py-8 text-center text-slate-500"
+                                >
+                                  Nenhum item encontrado.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
-                  </tbody>
-                </table>
+                  </div>
+                ))}
+
+                {pedidosFiltrados.length === 0 && (
+                  <div className="rounded-xl border p-8 text-center text-slate-500">
+                    Nenhum pedido encontrado.
+                  </div>
+                )}
               </div>
             </section>
           </div>
@@ -722,27 +777,5 @@ function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
       <p className="text-sm text-slate-500">{titulo}</p>
       <strong className="mt-2 block text-2xl text-slate-900">{valor}</strong>
     </div>
-  );
-}
-
-function Campo({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-}) {
-  return (
-    <input
-      type={type}
-      placeholder={label}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
-    />
   );
 }

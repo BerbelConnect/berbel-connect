@@ -6,23 +6,11 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 
-const statusOpcoes = [
-  "Todos",
-  "Orçamento",
-  "Pedido",
-  "Em produção",
-  "Faturado",
-  "Entregue",
-  "Cancelado",
-];
-
+const statusOpcoes = ["Todos", "Orçamento", "Pedido", "Em produção", "Faturado", "Entregue", "Cancelado"];
 const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
 
 function moeda(valor: any) {
-  return Number(valor || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+  return Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function hojeISO() {
@@ -39,18 +27,24 @@ function statusClasse(status: string) {
 }
 
 export default function ConsultaPedidosPage() {
+  const [clientes, setClientes] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("Todos");
   const [filtroTipo, setFiltroTipo] = useState("Todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState("Todos");
+  const [editando, setEditando] = useState<any | null>(null);
 
-  async function carregarPedidos() {
-    const { data, error } = await supabase
+  async function carregarDados() {
+    const clientesResp = await supabase
+      .from("clientes")
+      .select("id, razao_social")
+      .order("razao_social");
+
+    const pedidosResp = await supabase
       .from("pedidos")
-      .select(
-        `
+      .select(`
         *,
         clientes(
           razao_social,
@@ -70,34 +64,63 @@ export default function ConsultaPedidosPage() {
           produtos(nome),
           representadas(nome_fantasia)
         )
-      `
-      )
+      `)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (clientesResp.error) return alert(clientesResp.error.message);
+    if (pedidosResp.error) return alert(pedidosResp.error.message);
 
-    setPedidos(data || []);
+    setClientes(clientesResp.data || []);
+    setPedidos(pedidosResp.data || []);
   }
 
   useEffect(() => {
-    carregarPedidos();
+    carregarDados();
   }, []);
 
   async function alterarStatus(pedido: any, status: string) {
+    const { error } = await supabase.from("pedidos").update({ status }).eq("id", pedido.id);
+    if (error) return alert(error.message);
+    carregarDados();
+  }
+
+  function abrirEdicao(pedido: any) {
+    setEditando({
+      id: pedido.id,
+      cliente_id: pedido.cliente_id || "",
+      numero: pedido.numero || "",
+      data_pedido: pedido.data_pedido || hojeISO(),
+      status: pedido.status || "Pedido",
+      tipo_operacao: pedido.tipo_operacao || "Representação",
+      observacoes: pedido.observacoes || "",
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function salvarEdicao() {
+    if (!editando?.id) return;
+    if (!editando.cliente_id) return alert("Selecione o cliente.");
+
     const { error } = await supabase
       .from("pedidos")
-      .update({ status })
-      .eq("id", pedido.id);
+      .update({
+        cliente_id: editando.cliente_id,
+        numero: editando.numero,
+        data_pedido: editando.data_pedido,
+        status: editando.status,
+        tipo_operacao: editando.tipo_operacao,
+        observacoes: editando.observacoes,
+      })
+      .eq("id", editando.id);
 
     if (error) return alert(error.message);
 
-    carregarPedidos();
+    setEditando(null);
+    carregarDados();
+    alert("Pedido atualizado com sucesso.");
   }
-
-  function enviarWhatsApp(pedido: any) {
+    function enviarWhatsApp(pedido: any) {
     const numero = pedido.clientes?.whatsapp?.replace(/\D/g, "");
 
     if (!numero) {
@@ -109,11 +132,9 @@ export default function ConsultaPedidosPage() {
       pedido.pedido_itens
         ?.map(
           (item: any, index: number) =>
-            `${index + 1}. ${
-              item.produto_nome || item.produtos?.nome || "-"
-            } | ${item.representada_nome || "-"} | Qtd: ${
-              item.quantidade
-            } | Total: ${moeda(item.valor_total)}`
+            `${index + 1}. ${item.produto_nome || item.produtos?.nome || "-"} | ${
+              item.representada_nome || "-"
+            } | Qtd: ${item.quantidade} | Total: ${moeda(item.valor_total)}`
         )
         .join("\n") || "-";
 
@@ -135,15 +156,11 @@ Marcelo Henrique Berbel
 Berbel Connect
 `;
 
-    window.open(
-      `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`,
-      "_blank"
-    );
+    window.open(`https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`, "_blank");
   }
-    async function duplicarPedido(pedido: any) {
-    if (!confirm(`Deseja duplicar o pedido ${pedido.numero || pedido.id}?`)) {
-      return;
-    }
+
+  async function duplicarPedido(pedido: any) {
+    if (!confirm(`Deseja duplicar o pedido ${pedido.numero || pedido.id}?`)) return;
 
     const { data: novoNumero } = await supabase.rpc("gerar_numero_pedido");
 
@@ -174,8 +191,7 @@ Berbel Connect
         produto_id: item.produto_id,
         produto_nome: item.produto_nome || item.produtos?.nome || "",
         representada_id: item.representada_id || null,
-        representada_nome:
-          item.representada_nome || item.representadas?.nome_fantasia || "",
+        representada_nome: item.representada_nome || item.representadas?.nome_fantasia || "",
         modelo_negocio: item.modelo_negocio || "Representação",
         quantidade: Number(item.quantidade || 0),
         valor_unitario: Number(item.valor_unitario || 0),
@@ -189,7 +205,7 @@ Berbel Connect
       await supabase.from("pedido_itens").insert(itensPayload);
     }
 
-    carregarPedidos();
+    carregarDados();
     alert(`Pedido duplicado com sucesso: ${novoNumero}`);
   }
 
@@ -198,13 +214,9 @@ Berbel Connect
     if (!confirm("Deseja excluir este pedido?")) return;
 
     const { error } = await supabase.from("pedidos").delete().eq("id", id);
+    if (error) return alert(error.message);
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    carregarPedidos();
+    carregarDados();
   }
 
   const pedidosFiltrados = useMemo(() => {
@@ -224,33 +236,23 @@ Berbel Connect
         pedido.status,
         pedido.tipo_operacao,
         pedido.pedido_itens
-          ?.map(
-            (item: any) =>
-              `${item.produto_nome || ""} ${item.representada_nome || ""}`
-          )
+          ?.map((item: any) => `${item.produto_nome || ""} ${item.representada_nome || ""}`)
           .join(" "),
       ]
         .join(" ")
         .toLowerCase()
         .includes(texto);
 
-      const bateStatus =
-        filtroStatus === "Todos" || pedido.status === filtroStatus;
-
-      const bateTipo =
-        filtroTipo === "Todos" || pedido.tipo_operacao === filtroTipo;
+      const bateStatus = filtroStatus === "Todos" || pedido.status === filtroStatus;
+      const bateTipo = filtroTipo === "Todos" || pedido.tipo_operacao === filtroTipo;
 
       let batePeriodo = true;
 
-      if (filtroPeriodo === "Hoje") {
-        batePeriodo = dataPedido === hoje;
-      }
+      if (filtroPeriodo === "Hoje") batePeriodo = dataPedido === hoje;
 
       if (filtroPeriodo === "Este mês") {
         const data = new Date(dataPedido);
-        batePeriodo =
-          data.getMonth() === agora.getMonth() &&
-          data.getFullYear() === agora.getFullYear();
+        batePeriodo = data.getMonth() === agora.getMonth() && data.getFullYear() === agora.getFullYear();
       }
 
       if (filtroPeriodo === "Este ano") {
@@ -262,54 +264,103 @@ Berbel Connect
     });
   }, [pedidos, busca, filtroStatus, filtroTipo, filtroPeriodo]);
 
-  const totalPedidos = pedidosFiltrados.reduce(
-    (total, pedido) => total + Number(pedido.valor_total || 0),
-    0
-  );
-
-  const totalComissao = pedidosFiltrados.reduce(
-    (total, pedido) => total + Number(pedido.valor_comissao || 0),
-    0
-  );
-
-  const pedidosRepresentacao = pedidosFiltrados.filter(
-    (pedido) => pedido.tipo_operacao === "Representação"
-  ).length;
-
-  const pedidosRevenda = pedidosFiltrados.filter(
-    (pedido) => pedido.tipo_operacao === "Revenda Própria"
-  ).length;
-
-  const pedidosProducao = pedidosFiltrados.filter(
-    (pedido) => pedido.status === "Em produção"
-  ).length;
-
-  const pedidosEntregues = pedidosFiltrados.filter(
-    (pedido) => pedido.status === "Entregue"
-  ).length;
+  const totalPedidos = pedidosFiltrados.reduce((total, pedido) => total + Number(pedido.valor_total || 0), 0);
+  const totalComissao = pedidosFiltrados.reduce((total, pedido) => total + Number(pedido.valor_comissao || 0), 0);
+  const pedidosRepresentacao = pedidosFiltrados.filter((pedido) => pedido.tipo_operacao === "Representação").length;
+  const pedidosRevenda = pedidosFiltrados.filter((pedido) => pedido.tipo_operacao === "Revenda Própria").length;
+  const pedidosProducao = pedidosFiltrados.filter((pedido) => pedido.status === "Em produção").length;
+  const pedidosEntregues = pedidosFiltrados.filter((pedido) => pedido.status === "Entregue").length;
     return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader
-            titulo="Consulta de Pedidos V3"
-            subtitulo="Berbel Connect"
-          />
+          <PageHeader titulo="Consulta de Pedidos V3" subtitulo="Berbel Connect" />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
               <Card titulo="Pedidos" valor={pedidosFiltrados.length} />
               <Card titulo="Total vendido" valor={moeda(totalPedidos)} />
               <Card titulo="Comissão" valor={moeda(totalComissao)} />
-              <Card
-                titulo="Representação / Revenda"
-                valor={`${pedidosRepresentacao} / ${pedidosRevenda}`}
-              />
+              <Card titulo="Representação / Revenda" valor={`${pedidosRepresentacao} / ${pedidosRevenda}`} />
               <Card titulo="Em produção" valor={pedidosProducao} />
               <Card titulo="Entregues" valor={pedidosEntregues} />
             </div>
+
+            {editando && (
+              <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+                <h3 className="mb-5 text-xl font-bold text-slate-800">
+                  Editar pedido {editando.numero}
+                </h3>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <select
+                    value={editando.cliente_id}
+                    onChange={(e) => setEditando({ ...editando, cliente_id: e.target.value })}
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    <option value="">Selecione o cliente</option>
+                    {clientes.map((cliente) => (
+                      <option key={cliente.id} value={cliente.id}>
+                        {cliente.razao_social}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    value={editando.numero}
+                    onChange={(e) => setEditando({ ...editando, numero: e.target.value })}
+                    placeholder="Número"
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
+
+                  <input
+                    type="date"
+                    value={editando.data_pedido}
+                    onChange={(e) => setEditando({ ...editando, data_pedido: e.target.value })}
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
+
+                  <select
+                    value={editando.status}
+                    onChange={(e) => setEditando({ ...editando, status: e.target.value })}
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    {statusOpcoes.filter((s) => s !== "Todos").map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={editando.tipo_operacao}
+                    onChange={(e) => setEditando({ ...editando, tipo_operacao: e.target.value })}
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    {tipoOpcoes.filter((t) => t !== "Todos").map((tipo) => (
+                      <option key={tipo}>{tipo}</option>
+                    ))}
+                  </select>
+
+                  <textarea
+                    value={editando.observacoes}
+                    onChange={(e) => setEditando({ ...editando, observacoes: e.target.value })}
+                    placeholder="Observações"
+                    className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
+                  />
+                </div>
+
+                <div className="mt-5 flex gap-3">
+                  <button onClick={salvarEdicao} className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white">
+                    Salvar alterações
+                  </button>
+
+                  <button onClick={() => setEditando(null)} className="rounded-xl border px-6 py-3 font-semibold">
+                    Cancelar
+                  </button>
+                </div>
+              </section>
+            )}
 
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -317,34 +368,18 @@ Berbel Connect
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                   placeholder="Pesquisar pedido..."
-                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+                  className="rounded-xl border border-slate-200 px-4 py-3"
                 />
 
-                <select
-                  value={filtroStatus}
-                  onChange={(e) => setFiltroStatus(e.target.value)}
-                  className="rounded-xl border border-slate-200 px-4 py-3"
-                >
-                  {statusOpcoes.map((status) => (
-                    <option key={status}>{status}</option>
-                  ))}
+                <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="rounded-xl border border-slate-200 px-4 py-3">
+                  {statusOpcoes.map((status) => <option key={status}>{status}</option>)}
                 </select>
 
-                <select
-                  value={filtroTipo}
-                  onChange={(e) => setFiltroTipo(e.target.value)}
-                  className="rounded-xl border border-slate-200 px-4 py-3"
-                >
-                  {tipoOpcoes.map((tipo) => (
-                    <option key={tipo}>{tipo}</option>
-                  ))}
+                <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="rounded-xl border border-slate-200 px-4 py-3">
+                  {tipoOpcoes.map((tipo) => <option key={tipo}>{tipo}</option>)}
                 </select>
 
-                <select
-                  value={filtroPeriodo}
-                  onChange={(e) => setFiltroPeriodo(e.target.value)}
-                  className="rounded-xl border border-slate-200 px-4 py-3"
-                >
+                <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value)} className="rounded-xl border border-slate-200 px-4 py-3">
                   <option>Todos</option>
                   <option>Hoje</option>
                   <option>Este mês</option>
@@ -354,123 +389,74 @@ Berbel Connect
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-6 text-2xl font-bold text-slate-800">
-                Pedidos cadastrados
-              </h2>
+              <h2 className="mb-6 text-2xl font-bold text-slate-800">Pedidos cadastrados</h2>
 
               <div className="space-y-4">
                 {pedidosFiltrados.map((pedido) => (
                   <div key={pedido.id} className="rounded-2xl border p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">
-                          Pedido {pedido.numero || pedido.id}
-                        </h3>
-
+                        <h3 className="text-lg font-bold text-slate-900">Pedido {pedido.numero || pedido.id}</h3>
+                        <p className="text-sm text-slate-600">Cliente: {pedido.clientes?.razao_social || "-"}</p>
+                        <p className="text-sm text-slate-600">CNPJ: {pedido.clientes?.cnpj || "-"}</p>
                         <p className="text-sm text-slate-600">
-                          Cliente: {pedido.clientes?.razao_social || "-"}
+                          Endereço: {pedido.clientes?.endereco || "-"}, {pedido.clientes?.numero || "-"} -{" "}
+                          {pedido.clientes?.bairro || "-"} - {pedido.clientes?.cidade || "-"}/{pedido.clientes?.estado || "-"}
                         </p>
-
                         <p className="text-sm text-slate-600">
-                          CNPJ: {pedido.clientes?.cnpj || "-"}
+                          Telefone: {pedido.clientes?.telefone || "-"} | WhatsApp: {pedido.clientes?.whatsapp || "-"}
                         </p>
-
-                        <p className="text-sm text-slate-600">
-                          Endereço: {pedido.clientes?.endereco || "-"},{" "}
-                          {pedido.clientes?.numero || "-"} -{" "}
-                          {pedido.clientes?.bairro || "-"} -{" "}
-                          {pedido.clientes?.cidade || "-"}/
-                          {pedido.clientes?.estado || "-"}
-                        </p>
-
-                        <p className="text-sm text-slate-600">
-                          Telefone: {pedido.clientes?.telefone || "-"} | WhatsApp:{" "}
-                          {pedido.clientes?.whatsapp || "-"}
-                        </p>
-
-                        <p className="mt-2 text-sm text-slate-600">
-                          Tipo: {pedido.tipo_operacao || "-"}
-                        </p>
+                        <p className="mt-2 text-sm text-slate-600">Tipo: {pedido.tipo_operacao || "-"}</p>
 
                         <div className="mt-2 flex items-center gap-3">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasse(
-                              pedido.status
-                            )}`}
-                          >
+                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasse(pedido.status)}`}>
                             {pedido.status || "-"}
                           </span>
 
                           <select
                             value={pedido.status || "Orçamento"}
-                            onChange={(e) =>
-                              alterarStatus(pedido, e.target.value)
-                            }
+                            onChange={(e) => alterarStatus(pedido, e.target.value)}
                             className="rounded-lg border px-3 py-2 text-xs"
                           >
-                            {statusOpcoes
-                              .filter((s) => s !== "Todos")
-                              .map((status) => (
-                                <option key={status}>{status}</option>
-                              ))}
+                            {statusOpcoes.filter((s) => s !== "Todos").map((status) => (
+                              <option key={status}>{status}</option>
+                            ))}
                           </select>
                         </div>
                       </div>
 
                       <div className="text-right">
-                        <p className="text-xl font-bold text-blue-700">
-                          {moeda(pedido.valor_total)}
-                        </p>
-
-                        <p className="text-sm font-semibold text-green-700">
-                          Comissão: {moeda(pedido.valor_comissao)}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          Itens: {pedido.pedido_itens?.length || 0}
-                        </p>
+                        <p className="text-xl font-bold text-blue-700">{moeda(pedido.valor_total)}</p>
+                        <p className="text-sm font-semibold text-green-700">Comissão: {moeda(pedido.valor_comissao)}</p>
+                        <p className="text-xs text-slate-500">Itens: {pedido.pedido_itens?.length || 0}</p>
                       </div>
                     </div>
 
                     <div className="mt-5 flex flex-wrap gap-3">
                       <button
-                        onClick={() =>
-                          setPedidoAberto(
-                            pedidoAberto === pedido.id ? null : pedido.id
-                          )
-                        }
+                        onClick={() => setPedidoAberto(pedidoAberto === pedido.id ? null : pedido.id)}
                         className="rounded-lg bg-slate-900 px-4 py-2 text-white"
                       >
-                        {pedidoAberto === pedido.id
-                          ? "Ocultar itens"
-                          : "Ver itens"}
+                        {pedidoAberto === pedido.id ? "Ocultar itens" : "Ver itens"}
                       </button>
 
-                      <button
-                        onClick={() => duplicarPedido(pedido)}
-                        className="rounded-lg bg-purple-600 px-4 py-2 text-white"
-                      >
+                      <button onClick={() => abrirEdicao(pedido)} className="rounded-lg bg-amber-500 px-4 py-2 text-white">
+                        Editar
+                      </button>
+
+                      <button onClick={() => duplicarPedido(pedido)} className="rounded-lg bg-purple-600 px-4 py-2 text-white">
                         Duplicar
                       </button>
 
-                      <button
-                        onClick={() => gerarPedidoPDF(pedido)}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-white"
-                      >
+                      <button onClick={() => gerarPedidoPDF(pedido)} className="rounded-lg bg-blue-600 px-4 py-2 text-white">
                         PDF
                       </button>
 
-                      <button
-                        onClick={() => enviarWhatsApp(pedido)}
-                        className="rounded-lg bg-green-600 px-4 py-2 text-white"
-                      >
+                      <button onClick={() => enviarWhatsApp(pedido)} className="rounded-lg bg-green-600 px-4 py-2 text-white">
                         WhatsApp
                       </button>
 
-                      <button
-                        onClick={() => excluirPedido(pedido.id)}
-                        className="rounded-lg bg-red-600 px-4 py-2 text-white"
-                      >
+                      <button onClick={() => excluirPedido(pedido.id)} className="rounded-lg bg-red-600 px-4 py-2 text-white">
                         Excluir
                       </button>
                     </div>
@@ -493,31 +479,13 @@ Berbel Connect
                           <tbody className="divide-y divide-slate-100">
                             {pedido.pedido_itens?.map((item: any) => (
                               <tr key={item.id}>
-                                <td className="px-4 py-4 font-semibold">
-                                  {item.produto_nome ||
-                                    item.produtos?.nome ||
-                                    "-"}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {item.representada_nome ||
-                                    item.representadas?.nome_fantasia ||
-                                    "-"}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {item.modelo_negocio || "-"}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {item.quantidade}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {moeda(item.valor_unitario)}
-                                </td>
-                                <td className="px-4 py-4 font-semibold">
-                                  {moeda(item.valor_total)}
-                                </td>
-                                <td className="px-4 py-4 font-semibold text-green-700">
-                                  {moeda(item.valor_comissao)}
-                                </td>
+                                <td className="px-4 py-4 font-semibold">{item.produto_nome || item.produtos?.nome || "-"}</td>
+                                <td className="px-4 py-4">{item.representada_nome || item.representadas?.nome_fantasia || "-"}</td>
+                                <td className="px-4 py-4">{item.modelo_negocio || "-"}</td>
+                                <td className="px-4 py-4">{item.quantidade}</td>
+                                <td className="px-4 py-4">{moeda(item.valor_unitario)}</td>
+                                <td className="px-4 py-4 font-semibold">{moeda(item.valor_total)}</td>
+                                <td className="px-4 py-4 font-semibold text-green-700">{moeda(item.valor_comissao)}</td>
                               </tr>
                             ))}
                           </tbody>
