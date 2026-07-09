@@ -104,7 +104,27 @@ export default function PedidosPage() {
 
     const pedidosResp = await supabase
       .from("pedidos")
-      .select("*, clientes(razao_social), pedido_itens(*)")
+      .select(`
+        *,
+        clientes(
+          razao_social,
+          nome_fantasia,
+          cnpj,
+          endereco,
+          numero,
+          bairro,
+          cidade,
+          estado,
+          telefone,
+          whatsapp,
+          email
+        ),
+        pedido_itens(
+          *,
+          produtos(nome),
+          representadas(nome_fantasia)
+        )
+      `)
       .order("created_at", { ascending: false });
 
     if (clientesResp.error) return alert(clientesResp.error.message);
@@ -204,7 +224,8 @@ export default function PedidosPage() {
   const lucroPrevistoRevenda = itens
     .filter((item) => item.modelo_negocio === "Revenda Própria")
     .reduce((total, item) => total + Number(item.lucro_previsto || 0), 0);
-      async function salvarPedido() {
+
+  async function salvarPedido() {
     if (!form.cliente_id) return alert("Selecione o cliente.");
     if (itens.length === 0) return alert("Adicione ao menos um produto.");
 
@@ -344,6 +365,9 @@ export default function PedidosPage() {
       [
         pedido.numero,
         pedido.clientes?.razao_social,
+        pedido.clientes?.cnpj,
+        pedido.clientes?.bairro,
+        pedido.clientes?.cidade,
         pedido.status,
         pedido.tipo_operacao,
       ]
@@ -425,7 +449,8 @@ export default function PedidosPage() {
                 />
               </div>
             </section>
-                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-5 text-xl font-bold text-slate-800">
                 Adicionar produto
               </h3>
@@ -541,12 +566,8 @@ export default function PedidosPage() {
                         </td>
                         <td className="px-4 py-4">{item.modelo_negocio}</td>
                         <td className="px-4 py-4">{item.quantidade}</td>
-                        <td className="px-4 py-4">
-                          {moeda(item.valor_unitario)}
-                        </td>
-                        <td className="px-4 py-4">
-                          {moeda(item.valor_total)}
-                        </td>
+                        <td className="px-4 py-4">{moeda(item.valor_unitario)}</td>
+                        <td className="px-4 py-4">{moeda(item.valor_total)}</td>
                         <td className="px-4 py-4 text-green-700">
                           {moeda(item.valor_comissao)}
                         </td>
@@ -649,9 +670,7 @@ export default function PedidosPage() {
                         <td className="px-4 py-4">
                           {pedido.pedido_itens?.length || 0}
                         </td>
-                        <td className="px-4 py-4">
-                          {moeda(pedido.valor_total)}
-                        </td>
+                        <td className="px-4 py-4">{moeda(pedido.valor_total)}</td>
                         <td className="px-4 py-4 text-green-700">
                           {moeda(pedido.valor_comissao)}
                         </td>

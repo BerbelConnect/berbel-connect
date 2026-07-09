@@ -21,6 +21,20 @@ function texto(valor: any) {
   return valor || "-";
 }
 
+function enderecoCliente(cliente: any) {
+  if (!cliente) return "-";
+
+  const partes = [
+    cliente.endereco,
+    cliente.numero,
+    cliente.bairro,
+    cliente.cidade,
+    cliente.estado,
+  ].filter(Boolean);
+
+  return partes.length ? partes.join(", ") : "-";
+}
+
 async function carregarLogo() {
   try {
     const response = await fetch("/logo-berbel.png");
@@ -38,8 +52,6 @@ async function carregarLogo() {
 
 export async function gerarPedidoPDF(pedido: any) {
   const doc = new jsPDF("p", "mm", "a4");
-  const azul = [0, 63, 135];
-  const azulClaro = [21, 101, 192];
   const cinzaFundo = [245, 247, 250];
 
   const logo = await carregarLogo();
@@ -114,27 +126,27 @@ export async function gerarPedidoPDF(pedido: any) {
   doc.text("RESUMO DO PEDIDO", 116, 86);
 
   doc.setFillColor(...cinzaFundo);
-  doc.roundedRect(14, 91, 84, 39, 2, 2, "F");
-  doc.roundedRect(116, 91, 80, 39, 2, 2, "F");
+  doc.roundedRect(14, 91, 84, 55, 2, 2, "F");
+  doc.roundedRect(116, 91, 80, 55, 2, 2, "F");
 
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(7);
 
   doc.text("Razão Social:", 18, 101);
-  doc.text(texto(pedido.clientes?.razao_social), 49, 101);
+  doc.text(texto(pedido.clientes?.razao_social), 49, 101, { maxWidth: 45 });
 
   doc.text("CNPJ:", 18, 111);
   doc.text(texto(pedido.clientes?.cnpj), 49, 111);
 
   doc.text("Endereço:", 18, 121);
-  doc.text(texto(pedido.clientes?.endereco), 49, 121);
+  doc.text(enderecoCliente(pedido.clientes), 49, 121, { maxWidth: 45 });
 
-  doc.text("Telefone:", 18, 131);
-  doc.text(texto(pedido.clientes?.telefone), 49, 131);
+  doc.text("Telefone:", 18, 134);
+  doc.text(texto(pedido.clientes?.telefone), 49, 134);
 
-  doc.text("WhatsApp:", 18, 141);
-  doc.text(texto(pedido.clientes?.whatsapp), 49, 141);
+  doc.text("WhatsApp:", 18, 143);
+  doc.text(texto(pedido.clientes?.whatsapp), 49, 143);
 
   doc.text("Total dos Produtos:", 121, 101);
   doc.text(moeda(pedido.valor_total), 174, 101);
@@ -145,17 +157,20 @@ export async function gerarPedidoPDF(pedido: any) {
   doc.text("Frete:", 121, 121);
   doc.text(moeda(0), 174, 121);
 
+  doc.text("Tipo:", 121, 131);
+  doc.text(texto(pedido.tipo_operacao), 174, 131);
+
   doc.setFillColor(0, 63, 135);
-  doc.roundedRect(116, 133, 80, 13, 2, 2, "F");
+  doc.roundedRect(116, 137, 80, 13, 2, 2, "F");
 
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
-  doc.text("TOTAL DO PEDIDO:", 121, 142);
+  doc.text("TOTAL DO PEDIDO:", 121, 146);
   doc.setFontSize(10);
-  doc.text(moeda(pedido.valor_total), 164, 142);
+  doc.text(moeda(pedido.valor_total), 164, 146);
 
-  let y = 162;
+  let y = 164;
 
   doc.setTextColor(0, 63, 135);
   doc.setFont("helvetica", "bold");
@@ -196,16 +211,21 @@ export async function gerarPedidoPDF(pedido: any) {
     doc.setFontSize(6);
 
     doc.text(String(index + 1), 18, y + 5);
+
     doc.text(
       texto(item.produto_nome || item.produtos?.nome).substring(0, 32),
       31,
       y + 5
     );
+
     doc.text(
-      texto(item.representada_nome || item.representadas?.nome_fantasia).substring(0, 24),
+      texto(
+        item.representada_nome || item.representadas?.nome_fantasia
+      ).substring(0, 24),
       84,
       y + 5
     );
+
     doc.text(String(item.quantidade || 0), 130, y + 5);
     doc.text(moeda(item.valor_unitario), 145, y + 5);
     doc.text(moeda(item.valor_total), 174, y + 5);

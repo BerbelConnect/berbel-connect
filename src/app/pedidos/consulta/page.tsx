@@ -24,7 +24,19 @@ export default function ConsultaPedidosPage() {
       .select(
         `
         *,
-        clientes(razao_social, whatsapp),
+        clientes(
+          razao_social,
+          nome_fantasia,
+          cnpj,
+          endereco,
+          numero,
+          bairro,
+          cidade,
+          estado,
+          telefone,
+          whatsapp,
+          email
+        ),
         pedido_itens(
           *,
           produtos(nome),
@@ -73,7 +85,6 @@ Cliente: ${pedido.clientes?.razao_social || "-"}
 Tipo: ${pedido.tipo_operacao || "-"}
 Status: ${pedido.status || "-"}
 Total: ${moeda(pedido.valor_total)}
-Comissão prevista: ${moeda(pedido.valor_comissao)}
 
 Itens:
 ${itensTexto}
@@ -106,6 +117,9 @@ ${itensTexto}
       [
         pedido.numero,
         pedido.clientes?.razao_social,
+        pedido.clientes?.cnpj,
+        pedido.clientes?.bairro,
+        pedido.clientes?.cidade,
         pedido.status,
         pedido.tipo_operacao,
         pedido.pedido_itens
@@ -145,7 +159,10 @@ ${itensTexto}
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader titulo="Consulta de Pedidos V2" subtitulo="Berbel Connect" />
+          <PageHeader
+            titulo="Consulta de Pedidos V2"
+            subtitulo="Berbel Connect"
+          />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -183,6 +200,23 @@ ${itensTexto}
 
                         <p className="text-sm text-slate-600">
                           Cliente: {pedido.clientes?.razao_social || "-"}
+                        </p>
+
+                        <p className="text-sm text-slate-600">
+                          CNPJ: {pedido.clientes?.cnpj || "-"}
+                        </p>
+
+                        <p className="text-sm text-slate-600">
+                          Endereço: {pedido.clientes?.endereco || "-"},{" "}
+                          {pedido.clientes?.numero || "-"} -{" "}
+                          {pedido.clientes?.bairro || "-"} -{" "}
+                          {pedido.clientes?.cidade || "-"}/
+                          {pedido.clientes?.estado || "-"}
+                        </p>
+
+                        <p className="text-sm text-slate-600">
+                          Telefone: {pedido.clientes?.telefone || "-"} | WhatsApp:{" "}
+                          {pedido.clientes?.whatsapp || "-"}
                         </p>
 
                         <p className="text-sm text-slate-600">
