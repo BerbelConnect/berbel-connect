@@ -1,15 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthGuard } from "@/components/auth/AuthGuard";
+import { OfflineStatus } from "@/components/offline/OfflineStatus";
+import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
 
 export const metadata: Metadata = {
   title: "Berbel Connect",
   description: "CRM e ERP comercial para representantes",
-
-  // PWA
   manifest: "/manifest.json",
-
-  themeColor: "#0f172a",
 
   appleWebApp: {
     capable: true,
@@ -23,6 +21,10 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -32,6 +34,8 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body>
         <AuthGuard>{children}</AuthGuard>
+        <OfflineStatus />
+        <RegisterServiceWorker />
       </body>
     </html>
   );

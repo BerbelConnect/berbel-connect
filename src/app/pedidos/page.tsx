@@ -5,53 +5,140 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
+import {
+  contarPedidosOffline,
+  navegadorOnline,
+  salvarPedidoOffline,
+} from "@/lib/offline/pedidosOffline";
 
-const statusOpcoes = [
-  "Todos",
-  "Orçamento",
-  "Pedido",
-  "Em produção",
-  "Faturado",
-  "Entregue",
-  "Cancelado",
-];
+type Cliente = {
+  id: string;
+  razao_social: string;
+};
 
-const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
+type Produto = {
+  id: string;
+  nome: string;
+  preco: number;
+  comissao_percentual: number;
+};
 
-function moeda(valor: any) {
+type ItemPedido = {
+  produto_id: string;
+  produto_nome: string;
+  quantidade: string;
+  valor_unitario: string;
+  valor_total: string;
+  comissao_percentual: string;
+  valor_comissao: string;
+};
+
+type PedidoForm = {
+  cliente_id: string;
+  numero: string;
+  data_pedido: string;
+  data_entrega_prevista: string;
+  data_entrega_real: string;
+  tipo: string;
+  status: string;
+  observacoes: string;
+};
+
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function gerarNumeroLocal() {
+  const data = new Date();
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  const hora = String(data.getHours()).padStart(2, "0");
+  const minuto = String(data.getMinutes()).padStart(2, "0");
+  const segundo = String(data.getSeconds()).padStart(2, "0");
+
+  return `OFF-${ano}${mes}${dia}-${hora}${minuto}${segundo}`;
+}
+
+function formatarMoeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
   });
 }
 
-function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+function erroDeConexao(error: any) {
+  const mensagem = String(error?.message || error || "").toLowerCase();
+
+  return (
+    mensagem.includes("failed to fetch") ||
+    mensagem.includes("network") ||
+    mensagem.includes("fetch") ||
+    mensagem.includes("internet") ||
+    mensagem.includes("offline")
+  );
 }
 
-function statusClasse(status: string) {
-  if (status === "Entregue") return "bg-green-100 text-green-700";
-  if (status === "Faturado") return "bg-blue-100 text-blue-700";
-  if (status === "Em produção") return "bg-orange-100 text-orange-700";
-  if (status === "Cancelado") return "bg-red-100 text-red-700";
-  if (status === "Pedido") return "bg-yellow-100 text-yellow-700";
-  return "bg-slate-100 text-slate-700";
-}
+const pedidoInicial: PedidoForm = {
+  cliente_id: "",
+  numero: "",
+  data_pedido: hojeISO(),
+  data_entrega_prevista: "",
+  data_entrega_real: "",
+  tipo: "Representação",
+  status: "Orçamento",
+  observacoes: "",
+};
 
-function dataBR(data?: string | null) {
-  if (!data) return "-";
-  return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
-}
+const itemInicial: ItemPedido = {
+  produto_id: "",
+  produto_nome: "",
+  quantidade: "1",
+  valor_unitario: "",
+  valor_total: "",
+  comissao_percentual: "",
+  valor_comissao: "",
+};
 
-export default function ConsultaPedidosPage() {
-  const [clientes, setClientes] = useState<any[]>([]);
+export default function PedidosPage() {
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
-  const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
+
+  const [form, setForm] = useState<PedidoForm>(pedidoInicial);
+  const [itemAtual, setItemAtual] = useState<ItemPedido>(itemInicial);
+  const [itens, setItens] = useState<ItemPedido[]>([]);
+
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("Todos");
-  const [filtroTipo, setFiltroTipo] = useState("Todos");
-  const [filtroPeriodo, setFiltroPeriodo] = useState("Todos");
-  const [editando, setEditando] = useState<any | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [pendentesOffline, setPendentesOffline] = useState(0);
+
+  async function gerarNovoNumero() {
+    if (!navegadorOnline()) {
+      setForm((atual) => ({
+        ...atual,
+        numero: gerarNumeroLocal(),
+      }));
+      return;
+    }
+
+    const { count } = await supabase
+      .from("pedidos")
+      .select("id", { count: "exact", head: true });
+
+    const proximo = String((count || 0) + 1).padStart(6, "0");
+
+    setForm((atual) => ({
+      ...atual,
+      numero: atual.numero || `PED-${proximo}`,
+    }));
+  }
+
+  function atualizarPendentesOffline() {
+    setOnline(navegadorOnline());
+    setPendentesOffline(contarPedidosOffline());
+  }
 
   async function carregarDados() {
     const clientesResp = await supabase
@@ -59,9 +146,15 @@ export default function ConsultaPedidosPage() {
       .select("id, razao_social")
       .order("razao_social");
 
+    const produtosResp = await supabase
+      .from("produtos")
+      .select("id, nome, preco, comissao_percentual")
+      .order("nome");
+
     const pedidosResp = await supabase
       .from("pedidos")
-      .select(`
+      .select(
+        `
         *,
         clientes(
           razao_social,
@@ -76,684 +169,663 @@ export default function ConsultaPedidosPage() {
           whatsapp,
           email
         ),
-        pedido_itens(
-          *,
-          produtos(nome),
-          representadas(nome_fantasia)
-        )
-      `)
+        pedido_itens(*)
+      `
+      )
       .order("created_at", { ascending: false });
 
-    if (clientesResp.error) return alert(clientesResp.error.message);
-    if (pedidosResp.error) return alert(pedidosResp.error.message);
+    if (clientesResp.data) setClientes(clientesResp.data || []);
+    if (produtosResp.data) setProdutos(produtosResp.data || []);
+    if (pedidosResp.data) setPedidos(pedidosResp.data || []);
 
-    setClientes(clientesResp.data || []);
-    setPedidos(pedidosResp.data || []);
+    if (!form.numero) {
+      await gerarNovoNumero();
+    }
   }
 
   useEffect(() => {
     carregarDados();
-  }, []);
+    atualizarPendentesOffline();
 
-  async function alterarStatus(pedido: any, status: string) {
-    const payload: any = { status };
-
-    if (status === "Entregue" && !pedido.data_entrega_real) {
-      payload.data_entrega_real = hojeISO();
+    function atualizarStatus() {
+      atualizarPendentesOffline();
     }
 
-    const { error } = await supabase
-      .from("pedidos")
-      .update(payload)
-      .eq("id", pedido.id);
+    window.addEventListener("online", atualizarStatus);
+    window.addEventListener("offline", atualizarStatus);
+    window.addEventListener("berbel:pedidos-offline-atualizados", atualizarStatus);
 
-    if (error) return alert(error.message);
+    return () => {
+      window.removeEventListener("online", atualizarStatus);
+      window.removeEventListener("offline", atualizarStatus);
+      window.removeEventListener(
+        "berbel:pedidos-offline-atualizados",
+        atualizarStatus
+      );
+    };
+  }, []);
+    function recalcularItem(item: ItemPedido) {
+    const quantidade = Number(item.quantidade || 0);
+    const valorUnitario = Number(item.valor_unitario || 0);
+    const comissao = Number(item.comissao_percentual || 0);
 
-    carregarDados();
+    const valorTotal = quantidade * valorUnitario;
+    const valorComissao = valorTotal * (comissao / 100);
+
+    return {
+      ...item,
+      valor_total: String(valorTotal),
+      valor_comissao: String(valorComissao),
+    };
   }
 
-  function abrirEdicao(pedido: any) {
-    setEditando({
-      id: pedido.id,
-      cliente_id: pedido.cliente_id || "",
-      numero: pedido.numero || "",
-      data_pedido: pedido.data_pedido || hojeISO(),
-      data_entrega_prevista: pedido.data_entrega_prevista || "",
-      data_entrega_real: pedido.data_entrega_real || "",
-      status: pedido.status || "Pedido",
-      tipo_operacao: pedido.tipo_operacao || "Representação",
-      observacoes: pedido.observacoes || "",
+  function selecionarProduto(produtoId: string) {
+    const produto = produtos.find((p) => p.id === produtoId);
+
+    const novoItem = recalcularItem({
+      ...itemAtual,
+      produto_id: produtoId,
+      produto_nome: produto?.nome || "",
+      valor_unitario: String(produto?.preco || ""),
+      comissao_percentual: String(produto?.comissao_percentual || ""),
     });
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setItemAtual(novoItem);
   }
 
-  async function salvarEdicao() {
-    if (!editando?.id) return;
-    if (!editando.cliente_id) return alert("Selecione o cliente.");
+  function atualizarItemAtual(campo: keyof ItemPedido, valor: string) {
+    const novoItem = recalcularItem({
+      ...itemAtual,
+      [campo]: valor,
+    });
 
-    const { error } = await supabase
-      .from("pedidos")
-      .update({
-        cliente_id: editando.cliente_id,
-        numero: editando.numero,
-        data_pedido: editando.data_pedido,
-        data_entrega_prevista: editando.data_entrega_prevista || null,
-        data_entrega_real: editando.data_entrega_real || null,
-        status: editando.status,
-        tipo_operacao: editando.tipo_operacao,
-        observacoes: editando.observacoes,
-      })
-      .eq("id", editando.id);
-
-    if (error) return alert(error.message);
-
-    setEditando(null);
-    carregarDados();
-    alert("Pedido atualizado com sucesso.");
+    setItemAtual(novoItem);
   }
-    function enviarWhatsApp(pedido: any) {
-    const numero = pedido.clientes?.whatsapp?.replace(/\D/g, "");
 
-    if (!numero) {
-      alert("Cliente sem WhatsApp cadastrado.");
-      return;
+  function adicionarItem() {
+    if (!itemAtual.produto_id) return alert("Selecione um produto.");
+    if (!itemAtual.quantidade) return alert("Informe a quantidade.");
+    if (Number(itemAtual.quantidade) <= 0) {
+      return alert("A quantidade precisa ser maior que zero.");
     }
 
-    const itensTexto =
-      pedido.pedido_itens
-        ?.map(
-          (item: any, index: number) =>
-            `${index + 1}. ${
-              item.produto_nome || item.produtos?.nome || "-"
-            } | ${item.representada_nome || "-"} | Qtd: ${
-              item.quantidade
-            } | Total: ${moeda(item.valor_total)}`
-        )
-        .join("\n") || "-";
+    setItens([...itens, itemAtual]);
+    setItemAtual(itemInicial);
+  }
 
-    const mensagem = `
-Olá ${pedido.clientes?.razao_social || ""}, tudo bem?
+  function removerItem(index: number) {
+    setItens(itens.filter((_, i) => i !== index));
+  }
 
-Segue o resumo do pedido ${pedido.numero || pedido.id}.
-
-Status: ${pedido.status || "-"}
-Tipo: ${pedido.tipo_operacao || "-"}
-Previsão de entrega: ${dataBR(pedido.data_entrega_prevista)}
-Valor total: ${moeda(pedido.valor_total)}
-
-Itens:
-${itensTexto}
-
-Qualquer dúvida estou à disposição.
-
-Marcelo Henrique Berbel
-Berbel Connect
-`;
-
-    window.open(
-      `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`,
-      "_blank"
+  const valorTotalPedido = useMemo(() => {
+    return itens.reduce(
+      (total, item) => total + Number(item.valor_total || 0),
+      0
     );
-  }
+  }, [itens]);
 
-  async function duplicarPedido(pedido: any) {
-    if (!confirm(`Deseja duplicar o pedido ${pedido.numero || pedido.id}?`)) {
-      return;
-    }
-
-    const { data: novoNumero } = await supabase.rpc("gerar_numero_pedido");
-
-    const { data: pedidoCriado, error: erroPedido } = await supabase
-      .from("pedidos")
-      .insert({
-        cliente_id: pedido.cliente_id,
-        numero: novoNumero || `PED-${Date.now()}`,
-        data_pedido: hojeISO(),
-        data_entrega_prevista: pedido.data_entrega_prevista || null,
-        data_entrega_real: null,
-        status: "Orçamento",
-        observacoes: pedido.observacoes || "",
-        tipo_operacao: pedido.tipo_operacao || "Representação",
-        valor_total: Number(pedido.valor_total || 0),
-        valor_comissao: Number(pedido.valor_comissao || 0),
-        quantidade: Number(pedido.quantidade || 0),
-        valor_unitario: 0,
-      })
-      .select()
-      .single();
-
-    if (erroPedido) return alert(erroPedido.message);
-
-    const itens = pedido.pedido_itens || [];
-
-    if (itens.length > 0) {
-      const itensPayload = itens.map((item: any) => ({
-        pedido_id: pedidoCriado.id,
-        produto_id: item.produto_id,
-        produto_nome: item.produto_nome || item.produtos?.nome || "",
-        representada_id: item.representada_id || null,
-        representada_nome:
-          item.representada_nome || item.representadas?.nome_fantasia || "",
-        modelo_negocio: item.modelo_negocio || "Representação",
-        quantidade: Number(item.quantidade || 0),
-        valor_unitario: Number(item.valor_unitario || 0),
-        preco_custo: Number(item.preco_custo || 0),
-        valor_total: Number(item.valor_total || 0),
-        comissao_percentual: Number(item.comissao_percentual || 0),
-        valor_comissao: Number(item.valor_comissao || 0),
-        lucro_previsto: Number(item.lucro_previsto || 0),
-      }));
-
-      await supabase.from("pedido_itens").insert(itensPayload);
-    }
-
-    carregarDados();
-    alert(`Pedido duplicado com sucesso: ${novoNumero}`);
-  }
-
-  async function excluirPedido(id?: string) {
-    if (!id) return;
-    if (!confirm("Deseja excluir este pedido?")) return;
-
-    const { error } = await supabase.from("pedidos").delete().eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    carregarDados();
-  }
+  const valorTotalComissao = useMemo(() => {
+    return itens.reduce(
+      (total, item) => total + Number(item.valor_comissao || 0),
+      0
+    );
+  }, [itens]);
 
   const pedidosFiltrados = useMemo(() => {
     const texto = busca.toLowerCase();
-    const hoje = hojeISO();
-    const agora = new Date();
 
-    return pedidos.filter((pedido) => {
-      const dataPedido = pedido.data_pedido || pedido.created_at?.slice(0, 10);
-
-      const bateBusca = [
+    return pedidos.filter((pedido) =>
+      [
         pedido.numero,
         pedido.clientes?.razao_social,
-        pedido.clientes?.cnpj,
-        pedido.clientes?.bairro,
-        pedido.clientes?.cidade,
         pedido.status,
-        pedido.tipo_operacao,
-        pedido.pedido_itens
-          ?.map(
-            (item: any) =>
-              `${item.produto_nome || ""} ${item.representada_nome || ""}`
-          )
-          .join(" "),
+        pedido.tipo,
       ]
         .join(" ")
         .toLowerCase()
-        .includes(texto);
+        .includes(texto)
+    );
+  }, [pedidos, busca]);
 
-      const bateStatus =
-        filtroStatus === "Todos" || pedido.status === filtroStatus;
+  function montarPedidoPayload() {
+    return {
+      cliente_id: form.cliente_id,
+      numero: form.numero || gerarNumeroLocal(),
+      data_pedido: form.data_pedido,
+      data_entrega_prevista: form.data_entrega_prevista || null,
+      data_entrega_real: form.data_entrega_real || null,
+      tipo: form.tipo,
+      status: form.status,
+      observacoes: form.observacoes,
+      valor_total: valorTotalPedido,
+      valor_comissao: valorTotalComissao,
+    };
+  }
 
-      const bateTipo =
-        filtroTipo === "Todos" || pedido.tipo_operacao === filtroTipo;
+  function montarItensPayload() {
+    return itens.map((item) => ({
+      produto_id: item.produto_id,
+      produto_nome: item.produto_nome,
+      quantidade: Number(item.quantidade || 0),
+      valor_unitario: Number(item.valor_unitario || 0),
+      valor_total: Number(item.valor_total || 0),
+      comissao_percentual: Number(item.comissao_percentual || 0),
+      valor_comissao: Number(item.valor_comissao || 0),
+    }));
+  }
 
-      let batePeriodo = true;
-
-      if (filtroPeriodo === "Hoje") {
-        batePeriodo = dataPedido === hoje;
-      }
-
-      if (filtroPeriodo === "Este mês") {
-        const data = new Date(dataPedido);
-        batePeriodo =
-          data.getMonth() === agora.getMonth() &&
-          data.getFullYear() === agora.getFullYear();
-      }
-
-      if (filtroPeriodo === "Este ano") {
-        const data = new Date(dataPedido);
-        batePeriodo = data.getFullYear() === agora.getFullYear();
-      }
-
-      return bateBusca && bateStatus && bateTipo && batePeriodo;
+  function limparFormulario() {
+    setForm({
+      ...pedidoInicial,
+      data_pedido: hojeISO(),
+      numero: "",
     });
-  }, [pedidos, busca, filtroStatus, filtroTipo, filtroPeriodo]);
+    setItens([]);
+    setItemAtual(itemInicial);
 
-  const totalPedidos = pedidosFiltrados.reduce(
-    (total, pedido) => total + Number(pedido.valor_total || 0),
-    0
-  );
+    setTimeout(() => {
+      gerarNovoNumero();
+    }, 200);
+  }
 
-  const totalComissao = pedidosFiltrados.reduce(
-    (total, pedido) => total + Number(pedido.valor_comissao || 0),
-    0
-  );
+  function salvarPedidoNoNavegador(motivo?: string) {
+    const pedidoPayload = montarPedidoPayload();
+    const itensPayload = montarItensPayload();
 
-  const pedidosRepresentacao = pedidosFiltrados.filter(
-    (pedido) => pedido.tipo_operacao === "Representação"
-  ).length;
+    salvarPedidoOffline({
+      pedido: pedidoPayload,
+      itens: itensPayload,
+    });
 
-  const pedidosRevenda = pedidosFiltrados.filter(
-    (pedido) => pedido.tipo_operacao === "Revenda Própria"
-  ).length;
+    atualizarPendentesOffline();
 
-  const pedidosProducao = pedidosFiltrados.filter(
-    (pedido) => pedido.status === "Em produção"
-  ).length;
+    alert(
+      motivo ||
+        "Você está sem internet. O pedido foi salvo no navegador e ficará aguardando sincronização."
+    );
 
-  const pedidosEntregues = pedidosFiltrados.filter(
-    (pedido) => pedido.status === "Entregue"
-  ).length;
+    limparFormulario();
+  }
 
-  const pedidosAtrasados = pedidosFiltrados.filter(
-    (pedido) =>
-      pedido.data_entrega_prevista &&
-      pedido.data_entrega_prevista < hojeISO() &&
-      pedido.status !== "Entregue" &&
-      pedido.status !== "Cancelado"
-  ).length;
+  async function registrarFinanceiro(pedidoCriado: any) {
+    if (!pedidoCriado?.id) return;
+
+    const dataBase =
+      form.data_entrega_prevista || form.data_pedido || hojeISO();
+
+    if (valorTotalPedido > 0) {
+      await supabase.from("contas_receber").insert({
+        pedido_id: pedidoCriado.id,
+        cliente_id: form.cliente_id,
+        descricao: `Pedido ${pedidoCriado.numero || form.numero}`,
+        valor: valorTotalPedido,
+        data_vencimento: dataBase,
+        status: "Em aberto",
+      });
+    }
+
+    if (valorTotalComissao > 0) {
+      await supabase.from("comissoes_financeiro").insert({
+        pedido_id: pedidoCriado.id,
+        cliente_id: form.cliente_id,
+        empresa: form.tipo,
+        valor_base: valorTotalPedido,
+        valor_comissao: valorTotalComissao,
+        data_previsao: dataBase,
+        status: "Pendente",
+      });
+    }
+  }
+
+  async function salvarPedido() {
+    if (!form.cliente_id) return alert("Selecione o cliente.");
+    if (itens.length === 0) return alert("Adicione ao menos um produto.");
+    if (!form.data_pedido) return alert("Informe a data do pedido.");
+
+    if (!navegadorOnline()) {
+      salvarPedidoNoNavegador();
+      return;
+    }
+
+    setCarregando(true);
+
+    const pedidoPayload = montarPedidoPayload();
+    const itensPayload = montarItensPayload();
+
+    const { data: pedidoCriado, error: erroPedido } = await supabase
+      .from("pedidos")
+      .insert(pedidoPayload)
+      .select()
+      .single();
+
+    if (erroPedido) {
+      setCarregando(false);
+
+      if (erroDeConexao(erroPedido)) {
+        salvarPedidoNoNavegador(
+          "A conexão caiu durante o salvamento. O pedido foi salvo no navegador."
+        );
+        return;
+      }
+
+      return alert(erroPedido.message);
+    }
+
+    const itensBanco = itensPayload.map((item) => ({
+      ...item,
+      pedido_id: pedidoCriado.id,
+    }));
+
+    const { error: erroItens } = await supabase
+      .from("pedido_itens")
+      .insert(itensBanco);
+
+    if (erroItens) {
+      setCarregando(false);
+
+      if (erroDeConexao(erroItens)) {
+        salvarPedidoNoNavegador(
+          "A conexão caiu durante o salvamento dos itens. O pedido foi salvo no navegador."
+        );
+        return;
+      }
+
+      return alert(erroItens.message);
+    }
+
+    await registrarFinanceiro(pedidoCriado);
+
+    setCarregando(false);
+
+    alert("Pedido salvo com sucesso.");
+    limparFormulario();
+    carregarDados();
+  }
+
+  async function excluirPedido(id: string) {
+    if (!confirm("Deseja excluir este pedido?")) return;
+
+    await supabase.from("pedido_itens").delete().eq("pedido_id", id);
+
+    const { error } = await supabase.from("pedidos").delete().eq("id", id);
+
+    if (error) return alert(error.message);
+
+    carregarDados();
+  }
     return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader
-            titulo="Consulta de Pedidos V3"
-            subtitulo="Berbel Connect"
-          />
+          <PageHeader titulo="Pedidos" subtitulo="ERP Comercial" />
 
           <div className="p-8">
-            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-              <Card titulo="Pedidos" valor={pedidosFiltrados.length} />
-              <Card titulo="Total vendido" valor={moeda(totalPedidos)} />
-              <Card titulo="Comissão" valor={moeda(totalComissao)} />
-              <Card
-                titulo="Representação / Revenda"
-                valor={`${pedidosRepresentacao} / ${pedidosRevenda}`}
-              />
-              <Card titulo="Em produção" valor={pedidosProducao} />
-              <Card titulo="Entregues" valor={pedidosEntregues} />
-              <Card titulo="Atrasados" valor={pedidosAtrasados} />
-            </div>
-
-            {editando && (
-              <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
-                <h3 className="mb-5 text-xl font-bold text-slate-800">
-                  Editar pedido {editando.numero}
-                </h3>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <select
-                    value={editando.cliente_id}
-                    onChange={(e) =>
-                      setEditando({ ...editando, cliente_id: e.target.value })
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  >
-                    <option value="">Selecione o cliente</option>
-                    {clientes.map((cliente) => (
-                      <option key={cliente.id} value={cliente.id}>
-                        {cliente.razao_social}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    value={editando.numero}
-                    onChange={(e) =>
-                      setEditando({ ...editando, numero: e.target.value })
-                    }
-                    placeholder="Número"
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  />
-
-                  <input
-                    type="date"
-                    value={editando.data_pedido}
-                    onChange={(e) =>
-                      setEditando({
-                        ...editando,
-                        data_pedido: e.target.value,
-                      })
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  />
-
-                  <select
-                    value={editando.status}
-                    onChange={(e) =>
-                      setEditando({ ...editando, status: e.target.value })
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  >
-                    {statusOpcoes
-                      .filter((s) => s !== "Todos")
-                      .map((status) => (
-                        <option key={status}>{status}</option>
-                      ))}
-                  </select>
-
-                  <select
-                    value={editando.tipo_operacao}
-                    onChange={(e) =>
-                      setEditando({
-                        ...editando,
-                        tipo_operacao: e.target.value,
-                      })
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  >
-                    {tipoOpcoes
-                      .filter((t) => t !== "Todos")
-                      .map((tipo) => (
-                        <option key={tipo}>{tipo}</option>
-                      ))}
-                  </select>
-
-                  <input
-                    type="date"
-                    value={editando.data_entrega_prevista}
-                    onChange={(e) =>
-                      setEditando({
-                        ...editando,
-                        data_entrega_prevista: e.target.value,
-                      })
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  />
-
-                  <input
-                    type="date"
-                    value={editando.data_entrega_real}
-                    onChange={(e) =>
-                      setEditando({
-                        ...editando,
-                        data_entrega_real: e.target.value,
-                      })
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3"
-                  />
-
-                  <textarea
-                    value={editando.observacoes}
-                    onChange={(e) =>
-                      setEditando({
-                        ...editando,
-                        observacoes: e.target.value,
-                      })
-                    }
-                    placeholder="Observações"
-                    className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
-                  />
-                </div>
-
-                <p className="mt-3 text-xs text-slate-500">
-                  Os campos de data acima são: data do pedido, previsão de entrega e entrega real.
-                </p>
-
-                <div className="mt-5 flex gap-3">
-                  <button
-                    onClick={salvarEdicao}
-                    className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white"
-                  >
-                    Salvar alterações
-                  </button>
-
-                  <button
-                    onClick={() => setEditando(null)}
-                    className="rounded-xl border px-6 py-3 font-semibold"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </section>
+            {!online && (
+              <div className="mb-6 rounded-2xl border border-yellow-300 bg-yellow-50 p-5 text-sm text-yellow-800">
+                <strong>Modo offline ativo.</strong> Os pedidos feitos agora
+                serão salvos no navegador e sincronizados depois.
+              </div>
             )}
 
+            {pendentesOffline > 0 && (
+              <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
+                Existem <strong>{pendentesOffline}</strong> pedido(s)
+                aguardando sincronização.
+              </div>
+            )}
+
+            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
+              <Card titulo="Pedidos" valor={pedidos.length} />
+              <Card titulo="Filtrados" valor={pedidosFiltrados.length} />
+              <Card titulo="Total atual" valor={formatarMoeda(valorTotalPedido)} />
+              <Card
+                titulo="Comissão atual"
+                valor={formatarMoeda(valorTotalComissao)}
+              />
+              <Card titulo="Offline" valor={pendentesOffline} />
+            </div>
+
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-800">
+                    Novo pedido
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Agora o pedido também pode ser salvo sem internet.
+                  </p>
+                </div>
+
+                <button
+                  onClick={gerarNovoNumero}
+                  className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold"
+                >
+                  Gerar número
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <select
+                  value={form.cliente_id}
+                  onChange={(e) =>
+                    setForm({ ...form, cliente_id: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  <option value="">Selecione o cliente</option>
+                  {clientes.map((cliente) => (
+                    <option key={cliente.id} value={cliente.id}>
+                      {cliente.razao_social}
+                    </option>
+                  ))}
+                </select>
+
                 <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Pesquisar pedido..."
+                  placeholder="Número do pedido"
+                  value={form.numero}
+                  onChange={(e) =>
+                    setForm({ ...form, numero: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                />
+
+                <input
+                  type="date"
+                  value={form.data_pedido}
+                  onChange={(e) =>
+                    setForm({ ...form, data_pedido: e.target.value })
+                  }
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 />
 
                 <select
-                  value={filtroStatus}
-                  onChange={(e) => setFiltroStatus(e.target.value)}
+                  value={form.tipo}
+                  onChange={(e) => setForm({ ...form, tipo: e.target.value })}
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 >
-                  {statusOpcoes.map((status) => (
-                    <option key={status}>{status}</option>
-                  ))}
+                  <option>Representação</option>
+                  <option>Revenda</option>
+                  <option>Venda direta</option>
+                  <option>Orçamento</option>
                 </select>
 
                 <select
-                  value={filtroTipo}
-                  onChange={(e) => setFiltroTipo(e.target.value)}
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm({ ...form, status: e.target.value })
+                  }
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 >
-                  {tipoOpcoes.map((tipo) => (
-                    <option key={tipo}>{tipo}</option>
+                  <option>Orçamento</option>
+                  <option>Pedido</option>
+                  <option>Aprovado</option>
+                  <option>Faturado</option>
+                  <option>Entregue</option>
+                  <option>Cancelado</option>
+                </select>
+
+                <input
+                  type="date"
+                  value={form.data_entrega_prevista}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      data_entrega_prevista: e.target.value,
+                    })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  title="Previsão de entrega"
+                />
+
+                <input
+                  type="date"
+                  value={form.data_entrega_real}
+                  onChange={(e) =>
+                    setForm({ ...form, data_entrega_real: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  title="Entrega real"
+                />
+
+                <textarea
+                  placeholder="Observações do pedido"
+                  value={form.observacoes}
+                  onChange={(e) =>
+                    setForm({ ...form, observacoes: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
+                />
+              </div>
+            </section>
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-5 text-xl font-bold text-slate-800">
+                Produtos do pedido
+              </h3>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                <select
+                  value={itemAtual.produto_id}
+                  onChange={(e) => selecionarProduto(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
+                >
+                  <option value="">Selecione o produto</option>
+                  {produtos.map((produto) => (
+                    <option key={produto.id} value={produto.id}>
+                      {produto.nome}
+                    </option>
                   ))}
                 </select>
 
-                <select
-                  value={filtroPeriodo}
-                  onChange={(e) => setFiltroPeriodo(e.target.value)}
+                <input
+                  type="number"
+                  placeholder="Quantidade"
+                  value={itemAtual.quantidade}
+                  onChange={(e) =>
+                    atualizarItemAtual("quantidade", e.target.value)
+                  }
                   className="rounded-xl border border-slate-200 px-4 py-3"
+                />
+
+                <input
+                  type="number"
+                  placeholder="Valor unitário"
+                  value={itemAtual.valor_unitario}
+                  onChange={(e) =>
+                    atualizarItemAtual("valor_unitario", e.target.value)
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                />
+
+                <input
+                  type="number"
+                  placeholder="Comissão %"
+                  value={itemAtual.comissao_percentual}
+                  onChange={(e) =>
+                    atualizarItemAtual("comissao_percentual", e.target.value)
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                />
+
+                <button
+                  onClick={adicionarItem}
+                  className="rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white"
                 >
-                  <option>Todos</option>
-                  <option>Hoje</option>
-                  <option>Este mês</option>
-                  <option>Este ano</option>
-                </select>
+                  Adicionar
+                </button>
+              </div>
+                            <div className="mt-5 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Produto</th>
+                      <th className="px-4 py-3">Qtd</th>
+                      <th className="px-4 py-3">Unitário</th>
+                      <th className="px-4 py-3">Total</th>
+                      <th className="px-4 py-3">Comissão</th>
+                      <th className="px-4 py-3">Ações</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {itens.map((item, index) => (
+                      <tr key={`${item.produto_id}-${index}`}>
+                        <td className="px-4 py-4 font-semibold">
+                          {item.produto_nome}
+                        </td>
+                        <td className="px-4 py-4">{item.quantidade}</td>
+                        <td className="px-4 py-4">
+                          {formatarMoeda(item.valor_unitario)}
+                        </td>
+                        <td className="px-4 py-4">
+                          {formatarMoeda(item.valor_total)}
+                        </td>
+                        <td className="px-4 py-4 text-green-700">
+                          {formatarMoeda(item.valor_comissao)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <button
+                            onClick={() => removerItem(index)}
+                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                          >
+                            Remover
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {itens.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-4 py-8 text-center text-slate-500"
+                        >
+                          Nenhum produto adicionado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-4 border-t pt-5 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Total do pedido</p>
+                  <strong className="text-2xl text-slate-900">
+                    {formatarMoeda(valorTotalPedido)}
+                  </strong>
+                </div>
+
+                <div>
+                  <p className="text-sm text-slate-500">Comissão prevista</p>
+                  <strong className="text-2xl text-green-700">
+                    {formatarMoeda(valorTotalComissao)}
+                  </strong>
+                </div>
+
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <button
+                    onClick={salvarPedido}
+                    disabled={carregando}
+                    className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                  >
+                    {carregando
+                      ? "Salvando..."
+                      : online
+                      ? "Salvar pedido"
+                      : "Salvar offline"}
+                  </button>
+
+                  <button
+                    onClick={limparFormulario}
+                    className="rounded-xl border border-slate-300 px-6 py-3 font-semibold"
+                  >
+                    Limpar
+                  </button>
+                </div>
               </div>
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-6 text-2xl font-bold text-slate-800">
-                Pedidos cadastrados
-              </h2>
+              <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <h3 className="text-xl font-bold text-slate-800">
+                  Pedidos cadastrados
+                </h3>
 
-              <div className="space-y-4">
+                <input
+                  placeholder="Pesquisar pedido..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 md:max-w-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {pedidosFiltrados.map((pedido) => (
-                  <div key={pedido.id} className="rounded-2xl border p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div key={pedido.id} className="rounded-xl border p-5">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">
-                          Pedido {pedido.numero || pedido.id}
-                        </h3>
+                        <h4 className="font-bold text-slate-900">
+                          Pedido {pedido.numero || "-"}
+                        </h4>
 
-                        <p className="text-sm text-slate-600">
+                        <p className="mt-1 text-sm text-slate-500">
                           Cliente: {pedido.clientes?.razao_social || "-"}
                         </p>
 
-                        <p className="text-sm text-slate-600">
-                          CNPJ: {pedido.clientes?.cnpj || "-"}
+                        <p className="text-sm text-slate-500">
+                          Data:{" "}
+                          {pedido.data_pedido
+                            ? new Date(
+                                `${pedido.data_pedido}T00:00:00`
+                              ).toLocaleDateString("pt-BR")
+                            : "-"}
                         </p>
 
-                        <p className="text-sm text-slate-600">
-                          Endereço: {pedido.clientes?.endereco || "-"},{" "}
-                          {pedido.clientes?.numero || "-"} -{" "}
-                          {pedido.clientes?.bairro || "-"} -{" "}
-                          {pedido.clientes?.cidade || "-"}/
-                          {pedido.clientes?.estado || "-"}
+                        <p className="text-sm text-slate-500">
+                          Previsão entrega:{" "}
+                          {pedido.data_entrega_prevista
+                            ? new Date(
+                                `${pedido.data_entrega_prevista}T00:00:00`
+                              ).toLocaleDateString("pt-BR")
+                            : "-"}
                         </p>
 
-                        <p className="text-sm text-slate-600">
-                          Telefone: {pedido.clientes?.telefone || "-"} | WhatsApp:{" "}
-                          {pedido.clientes?.whatsapp || "-"}
+                        <p className="text-sm text-slate-500">
+                          Tipo: {pedido.tipo || "-"}
                         </p>
 
-                        <p className="mt-2 text-sm text-slate-600">
-                          Tipo: {pedido.tipo_operacao || "-"}
-                        </p>
-
-                        <p className="text-sm text-slate-600">
-                          Previsão de entrega:{" "}
-                          <strong>{dataBR(pedido.data_entrega_prevista)}</strong>
-                        </p>
-
-                        <p className="text-sm text-slate-600">
-                          Entrega real:{" "}
-                          <strong>{dataBR(pedido.data_entrega_real)}</strong>
-                        </p>
-
-                        <div className="mt-2 flex items-center gap-3">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasse(
-                              pedido.status
-                            )}`}
-                          >
-                            {pedido.status || "-"}
-                          </span>
-
-                          <select
-                            value={pedido.status || "Orçamento"}
-                            onChange={(e) =>
-                              alterarStatus(pedido, e.target.value)
-                            }
-                            className="rounded-lg border px-3 py-2 text-xs"
-                          >
-                            {statusOpcoes
-                              .filter((s) => s !== "Todos")
-                              .map((status) => (
-                                <option key={status}>{status}</option>
-                              ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <p className="text-xl font-bold text-blue-700">
-                          {moeda(pedido.valor_total)}
+                        <p className="mt-2 text-lg font-bold text-blue-700">
+                          {formatarMoeda(pedido.valor_total)}
                         </p>
 
                         <p className="text-sm font-semibold text-green-700">
-                          Comissão: {moeda(pedido.valor_comissao)}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          Itens: {pedido.pedido_itens?.length || 0}
+                          Comissão: {formatarMoeda(pedido.valor_comissao)}
                         </p>
                       </div>
+
+                      <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                        {pedido.status}
+                      </span>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      <button
-                        onClick={() =>
-                          setPedidoAberto(
-                            pedidoAberto === pedido.id ? null : pedido.id
-                          )
-                        }
-                        className="rounded-lg bg-slate-900 px-4 py-2 text-white"
-                      >
-                        {pedidoAberto === pedido.id
-                          ? "Ocultar itens"
-                          : "Ver itens"}
-                      </button>
-
-                      <button
-                        onClick={() => abrirEdicao(pedido)}
-                        className="rounded-lg bg-amber-500 px-4 py-2 text-white"
-                      >
-                        Editar
-                      </button>
-
-                      <button
-                        onClick={() => duplicarPedido(pedido)}
-                        className="rounded-lg bg-purple-600 px-4 py-2 text-white"
-                      >
-                        Duplicar
-                      </button>
-
+                    <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         onClick={() => gerarPedidoPDF(pedido)}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+                        className="rounded-lg bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700"
                       >
                         PDF
                       </button>
 
                       <button
-                        onClick={() => enviarWhatsApp(pedido)}
-                        className="rounded-lg bg-green-600 px-4 py-2 text-white"
-                      >
-                        WhatsApp
-                      </button>
-
-                      <button
                         onClick={() => excluirPedido(pedido.id)}
-                        className="rounded-lg bg-red-600 px-4 py-2 text-white"
+                        className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700"
                       >
                         Excluir
                       </button>
                     </div>
-
-                    {pedidoAberto === pedido.id && (
-                      <div className="mt-6 overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                          <thead className="bg-slate-50 text-slate-500">
-                            <tr>
-                              <th className="px-4 py-3">Produto</th>
-                              <th className="px-4 py-3">Representada</th>
-                              <th className="px-4 py-3">Modelo</th>
-                              <th className="px-4 py-3">Qtd.</th>
-                              <th className="px-4 py-3">Unit.</th>
-                              <th className="px-4 py-3">Total</th>
-                              <th className="px-4 py-3">Comissão</th>
-                            </tr>
-                          </thead>
-
-                          <tbody className="divide-y divide-slate-100">
-                            {pedido.pedido_itens?.map((item: any) => (
-                              <tr key={item.id}>
-                                <td className="px-4 py-4 font-semibold">
-                                  {item.produto_nome ||
-                                    item.produtos?.nome ||
-                                    "-"}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {item.representada_nome ||
-                                    item.representadas?.nome_fantasia ||
-                                    "-"}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {item.modelo_negocio || "-"}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {item.quantidade}
-                                </td>
-                                <td className="px-4 py-4">
-                                  {moeda(item.valor_unitario)}
-                                </td>
-                                <td className="px-4 py-4 font-semibold">
-                                  {moeda(item.valor_total)}
-                                </td>
-                                <td className="px-4 py-4 font-semibold text-green-700">
-                                  {moeda(item.valor_comissao)}
-                                </td>
-                              </tr>
-                            ))}
-
-                            {(!pedido.pedido_itens ||
-                              pedido.pedido_itens.length === 0) && (
-                              <tr>
-                                <td
-                                  colSpan={7}
-                                  className="px-4 py-8 text-center text-slate-500"
-                                >
-                                  Nenhum item encontrado.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
                   </div>
                 ))}
 
