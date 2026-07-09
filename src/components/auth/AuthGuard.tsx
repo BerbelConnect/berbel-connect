@@ -1,45 +1,102 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 const rotasPublicas = ["/login"];
 
+const permissoes = [
+  { prefixo: "/dashboard", perfis: ["Administrador", "Representante", "Financeiro", "Assistente"] },
+  { prefixo: "/clientes", perfis: ["Administrador", "Representante", "Assistente"] },
+  { prefixo: "/fornecedores", perfis: ["Administrador", "Assistente"] },
+  { prefixo: "/representadas", perfis: ["Administrador", "Representante", "Assistente"] },
+  { prefixo: "/produtos", perfis: ["Administrador", "Representante", "Assistente"] },
+  { prefixo: "/pedidos", perfis: ["Administrador", "Representante", "Assistente"] },
+  { prefixo: "/agenda", perfis: ["Administrador", "Representante", "Assistente"] },
+  { prefixo: "/visitas", perfis: ["Administrador", "Representante", "Assistente"] },
+  { prefixo: "/rotas", perfis: ["Administrador", "Representante"] },
+  { prefixo: "/pipeline", perfis: ["Administrador", "Representante"] },
+  { prefixo: "/ia-comercial", perfis: ["Administrador", "Representante"] },
+  { prefixo: "/alertas", perfis: ["Administrador", "Representante", "Financeiro"] },
+  { prefixo: "/financeiro", perfis: ["Administrador", "Financeiro"] },
+  { prefixo: "/comissoes", perfis: ["Administrador", "Financeiro"] },
+  { prefixo: "/relatorios-comerciais", perfis: ["Administrador", "Representante"] },
+  { prefixo: "/exportacoes", perfis: ["Administrador", "Financeiro"] },
+  { prefixo: "/usuarios", perfis: ["Administrador"] },
+  { prefixo: "/metas", perfis: ["Administrador", "Representante"] },
+];
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+
   const [carregando, setCarregando] = useState(true);
+  const [autorizado, setAutorizado] = useState(false);
+
+  const rotaPublica = useMemo(
+    () => rotasPublicas.includes(pathname),
+    [pathname]
+  );
 
   useEffect(() => {
-    async function verificarSessao() {
-      const { data } = await supabase.auth.getSession();
-      const logado = !!data.session;
-      const rotaPublica = rotasPublicas.includes(pathname);
+    async function verificar() {
+      setCarregando(true);
 
-      if (!logado && !rotaPublica) {
+      const { data: sessao } = await supabase.auth.getSession();
+      const usuario = sessao.session?.user;
+
+      if (!usuario && !rotaPublica) {
         router.replace("/login");
         return;
       }
 
-      if (logado && pathname === "/login") {
+      if (usuario && pathname === "/login") {
         router.replace("/dashboard");
         return;
       }
 
+      if (rotaPublica) {
+        setAutorizado(true);
+        setCarregando(false);
+        return;
+      }
+
+      const { data: perfil } = await supabase
+        .from("perfis_usuarios")
+        .select("perfil, ativo")
+        .eq("email", usuario?.email)
+        .single();
+
+      if (!perfil || !perfil.ativo) {
+        await supabase.auth.signOut();
+        router.replace("/login");
+        return;
+      }
+
+      const regra = permissoes.find((item) =>
+        pathname.startsWith(item.prefixo)
+      );
+
+      if (regra && !regra.perfis.includes(perfil.perfil)) {
+        router.replace("/dashboard");
+        return;
+      }
+
+      setAutorizado(true);
       setCarregando(false);
     }
 
-    verificarSessao();
+    verificar();
 
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      verificarSessao();
+      verificar();
     });
 
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [pathname, router]);
+  }, [pathname, rotaPublica, router]);
 
   if (carregando) {
     return (
@@ -50,6 +107,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       </main>
     );
   }
+
+  if (!autorizado) return null;
 
   return <>{children}</>;
 }
