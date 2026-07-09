@@ -6,6 +6,18 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 
+const statusOpcoes = [
+  "Todos",
+  "Orçamento",
+  "Pedido",
+  "Em produção",
+  "Faturado",
+  "Entregue",
+  "Cancelado",
+];
+
+const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
+
 function moeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -13,10 +25,26 @@ function moeda(valor: any) {
   });
 }
 
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function statusClasse(status: string) {
+  if (status === "Entregue") return "bg-green-100 text-green-700";
+  if (status === "Faturado") return "bg-blue-100 text-blue-700";
+  if (status === "Em produção") return "bg-orange-100 text-orange-700";
+  if (status === "Cancelado") return "bg-red-100 text-red-700";
+  if (status === "Pedido") return "bg-yellow-100 text-yellow-700";
+  return "bg-slate-100 text-slate-700";
+}
+
 export default function ConsultaPedidosPage() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("Todos");
+  const [filtroTipo, setFiltroTipo] = useState("Todos");
+  const [filtroPeriodo, setFiltroPeriodo] = useState("Todos");
 
   async function carregarPedidos() {
     const { data, error } = await supabase
@@ -58,6 +86,17 @@ export default function ConsultaPedidosPage() {
     carregarPedidos();
   }, []);
 
+  async function alterarStatus(pedido: any, status: string) {
+    const { error } = await supabase
+      .from("pedidos")
+      .update({ status })
+      .eq("id", pedido.id);
+
+    if (error) return alert(error.message);
+
+    carregarPedidos();
+  }
+
   function enviarWhatsApp(pedido: any) {
     const numero = pedido.clientes?.whatsapp?.replace(/\D/g, "");
 
@@ -79,21 +118,79 @@ export default function ConsultaPedidosPage() {
         .join("\n") || "-";
 
     const mensagem = `
-Olá! Segue resumo do pedido ${pedido.numero || pedido.id}.
+Olá ${pedido.clientes?.razao_social || ""}, tudo bem?
 
-Cliente: ${pedido.clientes?.razao_social || "-"}
-Tipo: ${pedido.tipo_operacao || "-"}
+Segue o resumo do pedido ${pedido.numero || pedido.id}.
+
 Status: ${pedido.status || "-"}
-Total: ${moeda(pedido.valor_total)}
+Tipo: ${pedido.tipo_operacao || "-"}
+Valor total: ${moeda(pedido.valor_total)}
 
 Itens:
 ${itensTexto}
+
+Qualquer dúvida estou à disposição.
+
+Marcelo Henrique Berbel
+Berbel Connect
 `;
 
     window.open(
       `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`,
       "_blank"
     );
+  }
+    async function duplicarPedido(pedido: any) {
+    if (!confirm(`Deseja duplicar o pedido ${pedido.numero || pedido.id}?`)) {
+      return;
+    }
+
+    const { data: novoNumero } = await supabase.rpc("gerar_numero_pedido");
+
+    const { data: pedidoCriado, error: erroPedido } = await supabase
+      .from("pedidos")
+      .insert({
+        cliente_id: pedido.cliente_id,
+        numero: novoNumero || `PED-${Date.now()}`,
+        data_pedido: hojeISO(),
+        status: "Orçamento",
+        observacoes: pedido.observacoes || "",
+        tipo_operacao: pedido.tipo_operacao || "Representação",
+        valor_total: Number(pedido.valor_total || 0),
+        valor_comissao: Number(pedido.valor_comissao || 0),
+        quantidade: Number(pedido.quantidade || 0),
+        valor_unitario: 0,
+      })
+      .select()
+      .single();
+
+    if (erroPedido) return alert(erroPedido.message);
+
+    const itens = pedido.pedido_itens || [];
+
+    if (itens.length > 0) {
+      const itensPayload = itens.map((item: any) => ({
+        pedido_id: pedidoCriado.id,
+        produto_id: item.produto_id,
+        produto_nome: item.produto_nome || item.produtos?.nome || "",
+        representada_id: item.representada_id || null,
+        representada_nome:
+          item.representada_nome || item.representadas?.nome_fantasia || "",
+        modelo_negocio: item.modelo_negocio || "Representação",
+        quantidade: Number(item.quantidade || 0),
+        valor_unitario: Number(item.valor_unitario || 0),
+        preco_custo: Number(item.preco_custo || 0),
+        valor_total: Number(item.valor_total || 0),
+        comissao_percentual: Number(item.comissao_percentual || 0),
+        valor_comissao: Number(item.valor_comissao || 0),
+        lucro_previsto: Number(item.lucro_previsto || 0),
+      }));
+
+      await supabase.from("pedido_itens").insert(itensPayload);
+    }
+
+    carregarPedidos();
+    alert(`Pedido duplicado com sucesso: ${novoNumero}`);
   }
 
   async function excluirPedido(id?: string) {
@@ -112,9 +209,13 @@ ${itensTexto}
 
   const pedidosFiltrados = useMemo(() => {
     const texto = busca.toLowerCase();
+    const hoje = hojeISO();
+    const agora = new Date();
 
-    return pedidos.filter((pedido) =>
-      [
+    return pedidos.filter((pedido) => {
+      const dataPedido = pedido.data_pedido || pedido.created_at?.slice(0, 10);
+
+      const bateBusca = [
         pedido.numero,
         pedido.clientes?.razao_social,
         pedido.clientes?.cnpj,
@@ -131,9 +232,35 @@ ${itensTexto}
       ]
         .join(" ")
         .toLowerCase()
-        .includes(texto)
-    );
-  }, [pedidos, busca]);
+        .includes(texto);
+
+      const bateStatus =
+        filtroStatus === "Todos" || pedido.status === filtroStatus;
+
+      const bateTipo =
+        filtroTipo === "Todos" || pedido.tipo_operacao === filtroTipo;
+
+      let batePeriodo = true;
+
+      if (filtroPeriodo === "Hoje") {
+        batePeriodo = dataPedido === hoje;
+      }
+
+      if (filtroPeriodo === "Este mês") {
+        const data = new Date(dataPedido);
+        batePeriodo =
+          data.getMonth() === agora.getMonth() &&
+          data.getFullYear() === agora.getFullYear();
+      }
+
+      if (filtroPeriodo === "Este ano") {
+        const data = new Date(dataPedido);
+        batePeriodo = data.getFullYear() === agora.getFullYear();
+      }
+
+      return bateBusca && bateStatus && bateTipo && batePeriodo;
+    });
+  }, [pedidos, busca, filtroStatus, filtroTipo, filtroPeriodo]);
 
   const totalPedidos = pedidosFiltrados.reduce(
     (total, pedido) => total + Number(pedido.valor_total || 0),
@@ -153,14 +280,21 @@ ${itensTexto}
     (pedido) => pedido.tipo_operacao === "Revenda Própria"
   ).length;
 
-  return (
+  const pedidosProducao = pedidosFiltrados.filter(
+    (pedido) => pedido.status === "Em produção"
+  ).length;
+
+  const pedidosEntregues = pedidosFiltrados.filter(
+    (pedido) => pedido.status === "Entregue"
+  ).length;
+    return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
 
         <section className="flex-1">
           <PageHeader
-            titulo="Consulta de Pedidos V2"
+            titulo="Consulta de Pedidos V3"
             subtitulo="Berbel Connect"
           />
 
@@ -173,21 +307,56 @@ ${itensTexto}
                 titulo="Representação / Revenda"
                 valor={`${pedidosRepresentacao} / ${pedidosRevenda}`}
               />
+              <Card titulo="Em produção" valor={pedidosProducao} />
+              <Card titulo="Entregues" valor={pedidosEntregues} />
             </div>
 
-            <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                <h2 className="text-2xl font-bold text-slate-800">
-                  Pedidos cadastrados
-                </h2>
-
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <input
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                   placeholder="Pesquisar pedido..."
-                  className="w-full max-w-sm rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
                 />
+
+                <select
+                  value={filtroStatus}
+                  onChange={(e) => setFiltroStatus(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  {statusOpcoes.map((status) => (
+                    <option key={status}>{status}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filtroTipo}
+                  onChange={(e) => setFiltroTipo(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  {tipoOpcoes.map((tipo) => (
+                    <option key={tipo}>{tipo}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filtroPeriodo}
+                  onChange={(e) => setFiltroPeriodo(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  <option>Todos</option>
+                  <option>Hoje</option>
+                  <option>Este mês</option>
+                  <option>Este ano</option>
+                </select>
               </div>
+            </section>
+
+            <section className="rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="mb-6 text-2xl font-bold text-slate-800">
+                Pedidos cadastrados
+              </h2>
 
               <div className="space-y-4">
                 {pedidosFiltrados.map((pedido) => (
@@ -219,13 +388,33 @@ ${itensTexto}
                           {pedido.clientes?.whatsapp || "-"}
                         </p>
 
-                        <p className="text-sm text-slate-600">
+                        <p className="mt-2 text-sm text-slate-600">
                           Tipo: {pedido.tipo_operacao || "-"}
                         </p>
 
-                        <p className="text-sm text-slate-600">
-                          Status: {pedido.status || "-"}
-                        </p>
+                        <div className="mt-2 flex items-center gap-3">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasse(
+                              pedido.status
+                            )}`}
+                          >
+                            {pedido.status || "-"}
+                          </span>
+
+                          <select
+                            value={pedido.status || "Orçamento"}
+                            onChange={(e) =>
+                              alterarStatus(pedido, e.target.value)
+                            }
+                            className="rounded-lg border px-3 py-2 text-xs"
+                          >
+                            {statusOpcoes
+                              .filter((s) => s !== "Todos")
+                              .map((status) => (
+                                <option key={status}>{status}</option>
+                              ))}
+                          </select>
+                        </div>
                       </div>
 
                       <div className="text-right">
@@ -255,6 +444,13 @@ ${itensTexto}
                         {pedidoAberto === pedido.id
                           ? "Ocultar itens"
                           : "Ver itens"}
+                      </button>
+
+                      <button
+                        onClick={() => duplicarPedido(pedido)}
+                        className="rounded-lg bg-purple-600 px-4 py-2 text-white"
+                      >
+                        Duplicar
                       </button>
 
                       <button
@@ -302,46 +498,28 @@ ${itensTexto}
                                     item.produtos?.nome ||
                                     "-"}
                                 </td>
-
                                 <td className="px-4 py-4">
                                   {item.representada_nome ||
                                     item.representadas?.nome_fantasia ||
                                     "-"}
                                 </td>
-
                                 <td className="px-4 py-4">
                                   {item.modelo_negocio || "-"}
                                 </td>
-
                                 <td className="px-4 py-4">
                                   {item.quantidade}
                                 </td>
-
                                 <td className="px-4 py-4">
                                   {moeda(item.valor_unitario)}
                                 </td>
-
                                 <td className="px-4 py-4 font-semibold">
                                   {moeda(item.valor_total)}
                                 </td>
-
                                 <td className="px-4 py-4 font-semibold text-green-700">
                                   {moeda(item.valor_comissao)}
                                 </td>
                               </tr>
                             ))}
-
-                            {(!pedido.pedido_itens ||
-                              pedido.pedido_itens.length === 0) && (
-                              <tr>
-                                <td
-                                  colSpan={7}
-                                  className="px-4 py-8 text-center text-slate-500"
-                                >
-                                  Nenhum item encontrado.
-                                </td>
-                              </tr>
-                            )}
                           </tbody>
                         </table>
                       </div>
