@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -10,6 +11,13 @@ import {
   navegadorOnline,
   salvarPedidoOffline,
 } from "@/lib/offline/pedidosOffline";
+import {
+  listarClientesOffline,
+  listarProdutosOffline,
+  obterDataAtualizacaoCache,
+  salvarClientesOffline,
+  salvarProdutosOffline,
+} from "@/lib/offline/dadosOffline";
 
 type Cliente = {
   id: string;
@@ -67,6 +75,26 @@ function formatarMoeda(valor: any) {
   });
 }
 
+function formatarData(data?: string | null) {
+  if (!data) return "-";
+
+  try {
+    return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
+  } catch {
+    return "-";
+  }
+}
+
+function formatarDataHora(data?: string | null) {
+  if (!data) return "Nunca atualizado";
+
+  try {
+    return new Date(data).toLocaleString("pt-BR");
+  } catch {
+    return "Data inválida";
+  }
+}
+
 function erroDeConexao(error: any) {
   const mensagem = String(error?.message || error || "").toLowerCase();
 
@@ -111,95 +139,191 @@ export default function PedidosPage() {
 
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [carregandoCache, setCarregandoCache] = useState(false);
   const [online, setOnline] = useState(true);
   const [pendentesOffline, setPendentesOffline] = useState(0);
+  const [usandoCache, setUsandoCache] = useState(false);
+  const [cacheAtualizadoEm, setCacheAtualizadoEm] = useState<string | null>(
+    null
+  );
+    function atualizarPendentesOffline() {
+    setOnline(navegadorOnline());
+    setPendentesOffline(contarPedidosOffline());
+    setCacheAtualizadoEm(obterDataAtualizacaoCache());
+  }
+
+  function carregarDadosDoCache() {
+    const clientesCache = listarClientesOffline();
+    const produtosCache = listarProdutosOffline();
+
+    setClientes(clientesCache);
+    setProdutos(produtosCache);
+    setUsandoCache(true);
+    setCacheAtualizadoEm(obterDataAtualizacaoCache());
+
+    return {
+      clientesCache,
+      produtosCache,
+    };
+  }
 
   async function gerarNovoNumero() {
     if (!navegadorOnline()) {
       setForm((atual) => ({
         ...atual,
-        numero: gerarNumeroLocal(),
+        numero: atual.numero || gerarNumeroLocal(),
       }));
       return;
     }
 
-    const { count } = await supabase
-      .from("pedidos")
-      .select("id", { count: "exact", head: true });
+    try {
+      const { count, error } = await supabase
+        .from("pedidos")
+        .select("id", { count: "exact", head: true });
 
-    const proximo = String((count || 0) + 1).padStart(6, "0");
+      if (error) throw error;
 
-    setForm((atual) => ({
-      ...atual,
-      numero: atual.numero || `PED-${proximo}`,
-    }));
-  }
+      const proximo = String((count || 0) + 1).padStart(6, "0");
 
-  function atualizarPendentesOffline() {
-    setOnline(navegadorOnline());
-    setPendentesOffline(contarPedidosOffline());
+      setForm((atual) => ({
+        ...atual,
+        numero: atual.numero || `PED-${proximo}`,
+      }));
+    } catch {
+      setForm((atual) => ({
+        ...atual,
+        numero: atual.numero || gerarNumeroLocal(),
+      }));
+    }
   }
 
   async function carregarDados() {
-    const clientesResp = await supabase
-      .from("clientes")
-      .select("id, razao_social")
-      .order("razao_social");
+    atualizarPendentesOffline();
 
-    const produtosResp = await supabase
-      .from("produtos")
-      .select("id, nome, preco, comissao_percentual")
-      .order("nome");
+    if (!navegadorOnline()) {
+      carregarDadosDoCache();
 
-    const pedidosResp = await supabase
-      .from("pedidos")
-      .select(
-        `
-        *,
-        clientes(
-          razao_social,
-          nome_fantasia,
-          cnpj,
-          endereco,
-          numero,
-          bairro,
-          cidade,
-          estado,
-          telefone,
-          whatsapp,
-          email
-        ),
-        pedido_itens(*)
-      `
-      )
-      .order("created_at", { ascending: false });
+      setForm((atual) => ({
+        ...atual,
+        numero: atual.numero || gerarNumeroLocal(),
+      }));
 
-    if (clientesResp.data) setClientes(clientesResp.data || []);
-    if (produtosResp.data) setProdutos(produtosResp.data || []);
-    if (pedidosResp.data) setPedidos(pedidosResp.data || []);
-
-    if (!form.numero) {
-      await gerarNovoNumero();
+      return;
     }
+
+    try {
+      const [clientesResp, produtosResp, pedidosResp] = await Promise.all([
+        supabase
+          .from("clientes")
+          .select("id, razao_social")
+          .order("razao_social"),
+        supabase
+          .from("produtos")
+          .select("id, nome, preco, comissao_percentual")
+          .order("nome"),
+        supabase
+          .from("pedidos")
+          .select(
+            `
+            *,
+            clientes(
+              razao_social,
+              nome_fantasia,
+              cnpj,
+              endereco,
+              numero,
+              bairro,
+              cidade,
+              estado,
+              telefone,
+              whatsapp,
+              email
+            ),
+            pedido_itens(*)
+          `
+          )
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (clientesResp.error) throw clientesResp.error;
+      if (produtosResp.error) throw produtosResp.error;
+
+      const clientesOnline = clientesResp.data || [];
+      const produtosOnline = produtosResp.data || [];
+
+      setClientes(clientesOnline);
+      setProdutos(produtosOnline);
+      salvarClientesOffline(clientesOnline);
+      salvarProdutosOffline(produtosOnline);
+
+      if (!pedidosResp.error) {
+        setPedidos(pedidosResp.data || []);
+      }
+
+      setUsandoCache(false);
+      setCacheAtualizadoEm(obterDataAtualizacaoCache());
+
+      if (!form.numero) {
+        await gerarNovoNumero();
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dados online. Usando cache.", error);
+
+      const { clientesCache, produtosCache } = carregarDadosDoCache();
+
+      if (clientesCache.length === 0 || produtosCache.length === 0) {
+        alert(
+          "Não foi possível carregar dados online e ainda não existe cache offline de clientes/produtos."
+        );
+      }
+
+      setForm((atual) => ({
+        ...atual,
+        numero: atual.numero || gerarNumeroLocal(),
+      }));
+    }
+  }
+
+  async function atualizarCacheManual() {
+    if (!navegadorOnline()) {
+      alert("Você está sem internet. Conecte para atualizar os dados offline.");
+      return;
+    }
+
+    setCarregandoCache(true);
+    await carregarDados();
+    setCarregandoCache(false);
+
+    alert("Clientes e produtos atualizados para uso offline.");
   }
 
   useEffect(() => {
     carregarDados();
-    atualizarPendentesOffline();
 
     function atualizarStatus() {
       atualizarPendentesOffline();
+
+      if (navegadorOnline()) {
+        carregarDados();
+      } else {
+        carregarDadosDoCache();
+      }
     }
 
     window.addEventListener("online", atualizarStatus);
     window.addEventListener("offline", atualizarStatus);
     window.addEventListener("berbel:pedidos-offline-atualizados", atualizarStatus);
+    window.addEventListener("berbel:dados-offline-atualizados", atualizarStatus);
 
     return () => {
       window.removeEventListener("online", atualizarStatus);
       window.removeEventListener("offline", atualizarStatus);
       window.removeEventListener(
         "berbel:pedidos-offline-atualizados",
+        atualizarStatus
+      );
+      window.removeEventListener(
+        "berbel:dados-offline-atualizados",
         atualizarStatus
       );
     };
@@ -245,6 +369,7 @@ export default function PedidosPage() {
   function adicionarItem() {
     if (!itemAtual.produto_id) return alert("Selecione um produto.");
     if (!itemAtual.quantidade) return alert("Informe a quantidade.");
+
     if (Number(itemAtual.quantidade) <= 0) {
       return alert("A quantidade precisa ser maior que zero.");
     }
@@ -320,6 +445,7 @@ export default function PedidosPage() {
       data_pedido: hojeISO(),
       numero: "",
     });
+
     setItens([]);
     setItemAtual(itemInicial);
 
@@ -469,23 +595,74 @@ export default function PedidosPage() {
               </div>
             )}
 
+            {usandoCache && (
+              <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
+                <strong>Dados offline carregados.</strong> Clientes e produtos
+                estão sendo usados a partir do armazenamento do navegador.
+              </div>
+            )}
+
+            {(clientes.length === 0 || produtos.length === 0) && (
+              <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                <strong>Atenção:</strong> ainda não há clientes/produtos salvos
+                para uso offline. Abra esta tela com internet e clique em
+                atualizar dados offline.
+              </div>
+            )}
+
             {pendentesOffline > 0 && (
               <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
                 Existem <strong>{pendentesOffline}</strong> pedido(s)
-                aguardando sincronização.
+                aguardando sincronização.{" "}
+                <Link
+                  href="/pedidos/offline"
+                  className="font-bold underline"
+                >
+                  Ver pedidos offline
+                </Link>
               </div>
             )}
 
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
               <Card titulo="Pedidos" valor={pedidos.length} />
               <Card titulo="Filtrados" valor={pedidosFiltrados.length} />
-              <Card titulo="Total atual" valor={formatarMoeda(valorTotalPedido)} />
-              <Card
-                titulo="Comissão atual"
-                valor={formatarMoeda(valorTotalComissao)}
-              />
+              <Card titulo="Clientes cache" valor={clientes.length} />
+              <Card titulo="Produtos cache" valor={produtos.length} />
               <Card titulo="Offline" valor={pendentesOffline} />
             </div>
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">
+                    Dados para uso offline
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Última atualização:{" "}
+                    <strong>{formatarDataHora(cacheAtualizadoEm)}</strong>
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <button
+                    onClick={atualizarCacheManual}
+                    disabled={carregandoCache}
+                    className="rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white disabled:opacity-60"
+                  >
+                    {carregandoCache
+                      ? "Atualizando..."
+                      : "Atualizar dados offline"}
+                  </button>
+
+                  <Link
+                    href="/pedidos/offline"
+                    className="rounded-xl border border-slate-300 px-6 py-3 text-center font-semibold"
+                  >
+                    Pedidos offline
+                  </Link>
+                </div>
+              </div>
+            </section>
 
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
@@ -494,7 +671,7 @@ export default function PedidosPage() {
                     Novo pedido
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    Agora o pedido também pode ser salvo sem internet.
+                    O pedido pode ser salvo com ou sem internet.
                   </p>
                 </div>
 
@@ -599,8 +776,7 @@ export default function PedidosPage() {
                 />
               </div>
             </section>
-
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-5 text-xl font-bold text-slate-800">
                 Produtos do pedido
               </h3>
@@ -656,7 +832,8 @@ export default function PedidosPage() {
                   Adicionar
                 </button>
               </div>
-                            <div className="mt-5 overflow-x-auto">
+
+              <div className="mt-5 overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
@@ -776,21 +953,12 @@ export default function PedidosPage() {
                         </p>
 
                         <p className="text-sm text-slate-500">
-                          Data:{" "}
-                          {pedido.data_pedido
-                            ? new Date(
-                                `${pedido.data_pedido}T00:00:00`
-                              ).toLocaleDateString("pt-BR")
-                            : "-"}
+                          Data: {formatarData(pedido.data_pedido)}
                         </p>
 
                         <p className="text-sm text-slate-500">
                           Previsão entrega:{" "}
-                          {pedido.data_entrega_prevista
-                            ? new Date(
-                                `${pedido.data_entrega_prevista}T00:00:00`
-                              ).toLocaleDateString("pt-BR")
-                            : "-"}
+                          {formatarData(pedido.data_entrega_prevista)}
                         </p>
 
                         <p className="text-sm text-slate-500">
