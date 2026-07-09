@@ -1,280 +1,327 @@
 import jsPDF from "jspdf";
 
-const empresa = {
-  nome: "BERBEL",
-  sobrenome: "CONNECT",
-  slogan: "Conectando relações, gerando resultados",
-  representante: "Marcelo Henrique Berbel",
-  telefone: "16 98806-9279",
-  email: "berbelm@icloud.com",
-  cidade: "Franca - SP",
-};
-
-function moeda(valor: any) {
+function formatarMoeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
   });
 }
 
+function formatarData(data?: string | null) {
+  if (!data) return "-";
+
+  try {
+    return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
+  } catch {
+    return "-";
+  }
+}
+
 function texto(valor: any) {
-  return valor || "-";
+  if (valor === null || valor === undefined || valor === "") return "-";
+  return String(valor);
 }
 
 function enderecoCliente(cliente: any) {
-  if (!cliente) return "-";
-
-  const partes = [
-    cliente.endereco,
-    cliente.numero,
-    cliente.bairro,
-    cliente.cidade,
-    cliente.estado,
-  ].filter(Boolean);
-
-  return partes.length ? partes.join(", ") : "-";
+  return [
+    cliente?.endereco,
+    cliente?.numero,
+    cliente?.bairro,
+    cliente?.cidade,
+    cliente?.estado,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
-async function carregarLogo() {
-  try {
-    const response = await fetch("/logo-berbel.png");
-    const blob = await response.blob();
-
-    return await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
-export async function gerarPedidoPDF(pedido: any) {
-  const doc = new jsPDF("p", "mm", "a4");
-  const cinzaFundo = [245, 247, 250];
-
-  const logo = await carregarLogo();
-
-  if (logo) {
-    doc.addImage(logo, "PNG", 14, 12, 42, 22);
-  } else {
-    doc.setTextColor(0, 63, 135);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text(empresa.nome, 14, 20);
-    doc.setTextColor(21, 101, 192);
-    doc.setFontSize(14);
-    doc.text(empresa.sobrenome, 14, 28);
-  }
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(7);
-  doc.text(empresa.slogan, 14, 39);
-
-  doc.setDrawColor(0, 63, 135);
-  doc.line(69, 13, 69, 44);
-
+function adicionarLinhaInfo(
+  doc: jsPDF,
+  label: string,
+  valor: string,
+  x: number,
+  y: number
+) {
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
-  doc.setTextColor(0, 63, 135);
-  doc.text("REPRESENTANTE COMERCIAL", 74, 16);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(0, 0, 0);
-  doc.text(empresa.representante, 74, 23);
+  doc.setTextColor(71, 85, 105);
+  doc.text(label, x, y);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.text(`Tel.: ${empresa.telefone}`, 74, 31);
-  doc.text(`E-mail: ${empresa.email}`, 74, 37);
-  doc.text(empresa.cidade, 74, 43);
+  doc.setTextColor(15, 23, 42);
+  doc.text(valor || "-", x + 36, y);
+}
 
-  doc.setFillColor(0, 63, 135);
-  doc.roundedRect(128, 13, 62, 15, 2, 2, "F");
+function novaPaginaSeNecessario(doc: jsPDF, y: number) {
+  if (y > 270) {
+    doc.addPage();
+    return 20;
+  }
+
+  return y;
+}
+
+export function gerarPedidoPDF(pedido: any) {
+  const doc = new jsPDF("p", "mm", "a4");
+
+  const cliente = pedido?.clientes || {};
+  const itens = pedido?.pedido_itens || pedido?.itens || [];
+
+  let y = 18;
+
+  // Cabeçalho
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, 210, 34, "F");
+
+  try {
+    doc.addImage("/logo-berbel.png", "PNG", 14, 7, 22, 22);
+  } catch {
+    // Caso a logo não carregue, o PDF continua sendo gerado.
+  }
 
   doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("BERBEL CONNECT", 42, 15);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("Pedido comercial / CRM para representantes", 42, 22);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text(`Pedido Nº ${texto(pedido?.numero || pedido?.id)}`, 150, 15);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 150, 22);
+
+  y = 46;
+
+  // Resumo do pedido
+  doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text("PEDIDO DE VENDA", 143, 23);
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "normal");
-
-  doc.text("Pedido Nº:", 130, 39);
-  doc.text(texto(pedido.numero), 175, 39);
-
-  doc.text("Data do Pedido:", 130, 48);
-  doc.text(texto(pedido.data_pedido), 175, 48);
-
-  doc.text("Status:", 130, 57);
-  doc.setTextColor(0, 120, 40);
-  doc.text(texto(pedido.status), 175, 57);
-
-  doc.setTextColor(0, 0, 0);
-  doc.text("Vendedor:", 130, 66);
-  doc.text(empresa.representante, 175, 66);
-
-  doc.setDrawColor(0, 63, 135);
-  doc.line(14, 75, 196, 75);
-
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 63, 135);
-  doc.text("DADOS DO CLIENTE", 14, 86);
-  doc.text("RESUMO DO PEDIDO", 116, 86);
-
-  doc.setFillColor(...cinzaFundo);
-  doc.roundedRect(14, 91, 84, 55, 2, 2, "F");
-  doc.roundedRect(116, 91, 80, 55, 2, 2, "F");
-
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(7);
-
-  doc.text("Razão Social:", 18, 101);
-  doc.text(texto(pedido.clientes?.razao_social), 49, 101, { maxWidth: 45 });
-
-  doc.text("CNPJ:", 18, 111);
-  doc.text(texto(pedido.clientes?.cnpj), 49, 111);
-
-  doc.text("Endereço:", 18, 121);
-  doc.text(enderecoCliente(pedido.clientes), 49, 121, { maxWidth: 45 });
-
-  doc.text("Telefone:", 18, 134);
-  doc.text(texto(pedido.clientes?.telefone), 49, 134);
-
-  doc.text("WhatsApp:", 18, 143);
-  doc.text(texto(pedido.clientes?.whatsapp), 49, 143);
-
-  doc.text("Total dos Produtos:", 121, 101);
-  doc.text(moeda(pedido.valor_total), 174, 101);
-
-  doc.text("Desconto:", 121, 111);
-  doc.text(moeda(0), 174, 111);
-
-  doc.text("Frete:", 121, 121);
-  doc.text(moeda(0), 174, 121);
-
-  doc.text("Tipo:", 121, 131);
-  doc.text(texto(pedido.tipo_operacao), 174, 131);
-
-  doc.setFillColor(0, 63, 135);
-  doc.roundedRect(116, 137, 80, 13, 2, 2, "F");
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text("TOTAL DO PEDIDO:", 121, 146);
-  doc.setFontSize(10);
-  doc.text(moeda(pedido.valor_total), 164, 146);
-
-  let y = 164;
-
-  doc.setTextColor(0, 63, 135);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text("ITENS DO PEDIDO", 14, y);
+  doc.text("RESUMO DO PEDIDO", 14, y);
 
   y += 6;
 
-  doc.setFillColor(0, 63, 135);
-  doc.rect(14, y, 182, 8, "F");
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(14, y, 84, 55, 2, 2, "F");
+  doc.roundedRect(112, y, 80, 55, 2, 2, "F");
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(6);
-  doc.text("ITEM", 17, y + 5);
-  doc.text("PRODUTO", 31, y + 5);
-  doc.text("REPRESENTADA", 84, y + 5);
-  doc.text("QTD.", 127, y + 5);
-  doc.text("VALOR UNIT.", 145, y + 5);
-  doc.text("VALOR TOTAL", 174, y + 5);
+  doc.setFontSize(9);
+
+  adicionarLinhaInfo(doc, "Número:", texto(pedido?.numero), 18, y + 9);
+  adicionarLinhaInfo(
+    doc,
+    "Data:",
+    formatarData(pedido?.data_pedido),
+    18,
+    y + 17
+  );
+  adicionarLinhaInfo(doc, "Tipo:", texto(pedido?.tipo), 18, y + 25);
+  adicionarLinhaInfo(doc, "Status:", texto(pedido?.status), 18, y + 33);
+  adicionarLinhaInfo(
+    doc,
+    "Vendedor:",
+    texto(pedido?.vendedor || pedido?.usuario || "Berbel Connect"),
+    18,
+    y + 41
+  );
+
+  adicionarLinhaInfo(
+    doc,
+    "Previsão:",
+    formatarData(pedido?.data_entrega_prevista),
+    116,
+    y + 9
+  );
+  adicionarLinhaInfo(
+    doc,
+    "Entrega:",
+    formatarData(pedido?.data_entrega_real),
+    116,
+    y + 17
+  );
+  adicionarLinhaInfo(
+    doc,
+    "Total:",
+    formatarMoeda(pedido?.valor_total),
+    116,
+    y + 25
+  );
+  adicionarLinhaInfo(
+    doc,
+    "Comissão:",
+    formatarMoeda(pedido?.valor_comissao),
+    116,
+    y + 33
+  );
+
+  y += 68;
+
+  // Cliente
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("DADOS DO CLIENTE", 14, y);
+
+  y += 6;
+
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(14, y, 178, 55, 2, 2, "F");
+
+  doc.setFontSize(9);
+
+  adicionarLinhaInfo(
+    doc,
+    "Razão:",
+    texto(cliente?.razao_social),
+    18,
+    y + 9
+  );
+  adicionarLinhaInfo(
+    doc,
+    "Fantasia:",
+    texto(cliente?.nome_fantasia),
+    18,
+    y + 17
+  );
+  adicionarLinhaInfo(doc, "CNPJ:", texto(cliente?.cnpj), 18, y + 25);
+  adicionarLinhaInfo(
+    doc,
+    "Endereço:",
+    enderecoCliente(cliente) || "-",
+    18,
+    y + 33
+  );
+  adicionarLinhaInfo(
+    doc,
+    "Contato:",
+    `Tel: ${texto(cliente?.telefone)} | WhatsApp: ${texto(cliente?.whatsapp)}`,
+    18,
+    y + 41
+  );
+  adicionarLinhaInfo(doc, "E-mail:", texto(cliente?.email), 18, y + 49);
+
+  y += 68;
+
+  // Itens
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("ITENS DO PEDIDO", 14, y);
 
   y += 8;
 
-  const itens = pedido.pedido_itens || [];
+  doc.setFillColor(15, 23, 42);
+  doc.rect(14, y, 178, 9, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+
+  doc.text("Produto", 17, y + 6);
+  doc.text("Qtd", 88, y + 6);
+  doc.text("Unitário", 105, y + 6);
+  doc.text("Total", 132, y + 6);
+  doc.text("Comissão", 158, y + 6);
+
+  y += 9;
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "normal");
+
+  if (itens.length === 0) {
+    doc.text("Nenhum item encontrado.", 17, y + 8);
+    y += 16;
+  }
 
   itens.forEach((item: any, index: number) => {
-    if (y > 240) {
-      doc.addPage();
-      y = 20;
-    }
+    y = novaPaginaSeNecessario(doc, y);
 
     if (index % 2 === 0) {
       doc.setFillColor(248, 250, 252);
-      doc.rect(14, y, 182, 8, "F");
+      doc.rect(14, y, 178, 10, "F");
     }
 
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6);
+    const nomeProduto = texto(item?.produto_nome || item?.produtos?.nome);
+    const nomeLimitado =
+      nomeProduto.length > 38 ? `${nomeProduto.slice(0, 38)}...` : nomeProduto;
 
-    doc.text(String(index + 1), 18, y + 5);
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
 
-    doc.text(
-      texto(item.produto_nome || item.produtos?.nome).substring(0, 32),
-      31,
-      y + 5
-    );
+    doc.text(nomeLimitado, 17, y + 7);
+    doc.text(texto(item?.quantidade), 88, y + 7);
+    doc.text(formatarMoeda(item?.valor_unitario), 105, y + 7);
+    doc.text(formatarMoeda(item?.valor_total), 132, y + 7);
+    doc.text(formatarMoeda(item?.valor_comissao), 158, y + 7);
 
-    doc.text(
-      texto(
-        item.representada_nome || item.representadas?.nome_fantasia
-      ).substring(0, 24),
-      84,
-      y + 5
-    );
-
-    doc.text(String(item.quantidade || 0), 130, y + 5);
-    doc.text(moeda(item.valor_unitario), 145, y + 5);
-    doc.text(moeda(item.valor_total), 174, y + 5);
-
-    y += 8;
+    y += 10;
   });
 
   y += 8;
+  y = novaPaginaSeNecessario(doc, y);
 
-  doc.setDrawColor(0, 63, 135);
-  doc.line(14, y, 196, y);
+  // Totais
+  doc.setFillColor(239, 246, 255);
+  doc.roundedRect(112, y, 80, 34, 2, 2, "F");
 
-  y += 10;
-
-  doc.setFillColor(...cinzaFundo);
-  doc.roundedRect(14, y, 84, 36, 2, 2, "F");
-  doc.roundedRect(112, y, 84, 36, 2, 2, "F");
-
-  doc.setTextColor(0, 63, 135);
+  doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text("OBSERVAÇÕES", 18, y + 8);
-  doc.text("CONTATOS", 116, y + 8);
+  doc.setFontSize(10);
+  doc.text("TOTAL DO PEDIDO", 118, y + 10);
 
-  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(14);
+  doc.setTextColor(29, 78, 216);
+  doc.text(formatarMoeda(pedido?.valor_total), 118, y + 20);
+
+  doc.setFontSize(9);
+  doc.setTextColor(22, 163, 74);
+  doc.text(`Comissão: ${formatarMoeda(pedido?.valor_comissao)}`, 118, y + 28);
+
+  y += 46;
+
+  // Observações
+  y = novaPaginaSeNecessario(doc, y);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("OBSERVAÇÕES", 14, y);
+
+  y += 6;
+
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(14, y, 178, 30, 2, 2, "F");
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(9);
 
-  doc.text(String(pedido.observacoes || "-"), 18, y + 17, {
-    maxWidth: 76,
-  });
+  const observacoes = texto(pedido?.observacoes);
+  const linhasObs = doc.splitTextToSize(observacoes, 170);
+  doc.text(linhasObs, 18, y + 8);
 
-  doc.text(empresa.telefone, 116, y + 17);
-  doc.text(empresa.email, 116, y + 25);
-  doc.text(empresa.cidade, 116, y + 33);
+  // Rodapé
+  const totalPaginas = doc.getNumberOfPages();
 
-  doc.setFillColor(0, 36, 90);
-  doc.rect(0, 286, 210, 11, "F");
+  for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+    doc.setPage(pagina);
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(6);
-  doc.text(
-    "Documento gerado eletronicamente pelo sistema Berbel Connect",
-    14,
-    293
-  );
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, 285, 196, 285);
 
-  const dataAtual = new Date().toLocaleString("pt-BR");
-  doc.text(dataAtual, 170, 293);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      "Berbel Connect - CRM e ERP comercial para representantes",
+      14,
+      291
+    );
+    doc.text(`Página ${pagina} de ${totalPaginas}`, 170, 291);
+  }
 
-  doc.save(`pedido-${pedido.numero || pedido.id}.pdf`);
+  doc.save(`pedido-${pedido?.numero || pedido?.id || "berbel-connect"}.pdf`);
 }
