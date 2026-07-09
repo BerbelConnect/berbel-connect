@@ -12,6 +12,17 @@ function moeda(valor: any) {
   });
 }
 
+function diasDesde(data?: string | null) {
+  if (!data) return 999;
+
+  const hoje = new Date();
+  const alvo = new Date(data);
+
+  return Math.floor(
+    (hoje.getTime() - alvo.getTime()) / (1000 * 60 * 60 * 24)
+  );
+}
+
 export default function DashboardPage() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [receber, setReceber] = useState<any[]>([]);
@@ -19,6 +30,8 @@ export default function DashboardPage() {
   const [comissoes, setComissoes] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [visitas, setVisitas] = useState<any[]>([]);
+  const [pipeline, setPipeline] = useState<any[]>([]);
+  const [alertasClientes, setAlertasClientes] = useState<any[]>([]);
 
   async function carregarDados() {
     const pedidosResp = await supabase
@@ -43,12 +56,23 @@ export default function DashboardPage() {
       .select("*, clientes(razao_social)")
       .order("data_visita", { ascending: true });
 
+    const pipelineResp = await supabase
+      .from("pipeline_comercial")
+      .select("*, clientes(razao_social)")
+      .order("created_at", { ascending: false });
+
+    const alertasResp = await supabase
+      .from("vw_alertas_comerciais")
+      .select("*");
+
     setPedidos(pedidosResp.data || []);
     setReceber(receberResp.data || []);
     setPagar(pagarResp.data || []);
     setComissoes(comissoesResp.data || []);
     setClientes(clientesResp.data || []);
     setVisitas(visitasResp.data || []);
+    setPipeline(pipelineResp.data || []);
+    setAlertasClientes(alertasResp.data || []);
   }
 
   useEffect(() => {
@@ -58,32 +82,61 @@ export default function DashboardPage() {
   const hoje = new Date().toISOString().slice(0, 10);
 
   const totalVendido = pedidos.reduce(
-    (soma, p) => soma + Number(p.valor_total || 0),
+    (soma, pedido) => soma + Number(pedido.valor_total || 0),
     0
   );
 
   const totalComissao = comissoes.reduce(
-    (soma, c) => soma + Number(c.valor_comissao || 0),
+    (soma, item) => soma + Number(item.valor_comissao || 0),
     0
   );
 
   const comissaoRecebida = comissoes
-    .filter((c) => c.status === "Recebida")
-    .reduce((soma, c) => soma + Number(c.valor_comissao || 0), 0);
+    .filter((item) => item.status === "Recebida")
+    .reduce((soma, item) => soma + Number(item.valor_comissao || 0), 0);
 
   const comissaoPendente = totalComissao - comissaoRecebida;
 
   const totalReceber = receber
-    .filter((c) => c.status !== "Recebido")
-    .reduce((soma, c) => soma + Number(c.valor || 0), 0);
+    .filter((item) => item.status !== "Recebido")
+    .reduce((soma, item) => soma + Number(item.valor || 0), 0);
 
   const totalPagar = pagar
-    .filter((c) => c.status !== "Pago")
-    .reduce((soma, c) => soma + Number(c.valor || 0), 0);
+    .filter((item) => item.status !== "Pago")
+    .reduce((soma, item) => soma + Number(item.valor || 0), 0);
 
   const saldoPrevisto = totalReceber - totalPagar;
 
-  const visitasHoje = visitas.filter((v) => v.data_visita === hoje);
+  const visitasHoje = visitas.filter((visita) => visita.data_visita === hoje);
+
+  const visitasAtrasadas = visitas.filter(
+    (visita) => visita.data_visita < hoje && visita.status !== "Concluída"
+  );
+
+  const pipelineAberto = pipeline.filter((item) => item.status === "Aberto");
+
+  const valorPipeline = pipelineAberto.reduce(
+    (soma, item) => soma + Number(item.valor_estimado || 0),
+    0
+  );
+
+  const clientesSemCompra = alertasClientes
+    .map((cliente) => ({
+      ...cliente,
+      dias_sem_compra: diasDesde(cliente.ultima_compra),
+    }))
+    .filter((cliente) => cliente.dias_sem_compra >= 45)
+    .sort((a, b) => b.dias_sem_compra - a.dias_sem_compra);
+
+  const clientesSemVisita = alertasClientes
+    .map((cliente) => ({
+      ...cliente,
+      dias_sem_visita: diasDesde(cliente.ultima_visita),
+    }))
+    .filter((cliente) => cliente.dias_sem_visita >= 30)
+    .sort((a, b) => b.dias_sem_visita - a.dias_sem_visita);
+
+  const pedidosRecentes = pedidos.slice(0, 5);
 
   const topClientes = useMemo(() => {
     const mapa = new Map<string, number>();
@@ -113,15 +166,16 @@ export default function DashboardPage() {
       .slice(0, 5);
   }, [comissoes]);
 
-  const pedidosRecentes = pedidos.slice(0, 5);
-
   return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader titulo="Dashboard Executivo V2" subtitulo="Berbel Connect" />
+          <PageHeader
+            titulo="Dashboard Executivo V3"
+            subtitulo="Centro de comando Berbel Connect"
+          />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -129,140 +183,155 @@ export default function DashboardPage() {
               <Card titulo="Comissão prevista" valor={moeda(totalComissao)} />
               <Card titulo="Comissão recebida" valor={moeda(comissaoRecebida)} />
               <Card titulo="Comissão pendente" valor={moeda(comissaoPendente)} />
+
               <Card titulo="A receber" valor={moeda(totalReceber)} />
               <Card titulo="A pagar" valor={moeda(totalPagar)} />
               <Card titulo="Saldo previsto" valor={moeda(saldoPrevisto)} />
+              <Card titulo="Pipeline aberto" valor={moeda(valorPipeline)} />
+
+              <Card titulo="Clientes" valor={clientes.length} />
               <Card titulo="Visitas hoje" valor={visitasHoje.length} />
+              <Card titulo="Visitas atrasadas" valor={visitasAtrasadas.length} />
+              <Card titulo="Oportunidades" valor={pipelineAberto.length} />
             </div>
 
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              <section className="rounded-2xl bg-white p-6 shadow-sm">
-                <h3 className="mb-5 text-xl font-bold text-slate-800">
-                  Pedidos recentes
-                </h3>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <Painel titulo="Clientes sem visita">
+                {clientesSemVisita.slice(0, 5).map((cliente) => (
+                  <Item
+                    key={cliente.cliente_id}
+                    titulo={cliente.razao_social}
+                    subtitulo={`${cliente.cidade || "-"}/${cliente.estado || "-"}`}
+                    detalhe={`Última visita há ${cliente.dias_sem_visita} dias`}
+                  />
+                ))}
 
-                <div className="space-y-3">
-                  {pedidosRecentes.map((pedido) => (
-                    <div
-                      key={pedido.id}
-                      className="flex justify-between rounded-xl border p-4"
-                    >
-                      <div>
-                        <p className="font-bold">
-                          {pedido.numero || pedido.id}
-                        </p>
-                        <p className="text-sm text-slate-500">
-                          {pedido.clientes?.razao_social || "-"}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {pedido.tipo_operacao || "-"} • {pedido.status || "-"}
-                        </p>
-                      </div>
+                {clientesSemVisita.length === 0 && <Vazio texto="Nenhum alerta." />}
+              </Painel>
 
-                      <div className="text-right">
-                        <p className="font-bold text-blue-700">
-                          {moeda(pedido.valor_total)}
-                        </p>
-                        <p className="text-sm text-green-700">
-                          {moeda(pedido.valor_comissao)}
-                        </p>
-                      </div>
-                    </div>
+              <Painel titulo="Clientes sem compra">
+                {clientesSemCompra.slice(0, 5).map((cliente) => (
+                  <Item
+                    key={cliente.cliente_id}
+                    titulo={cliente.razao_social}
+                    subtitulo={`${cliente.cidade || "-"}/${cliente.estado || "-"}`}
+                    detalhe={`Última compra há ${cliente.dias_sem_compra} dias`}
+                  />
+                ))}
+
+                {clientesSemCompra.length === 0 && <Vazio texto="Nenhum alerta." />}
+              </Painel>
+
+              <Painel titulo="Agenda de hoje">
+                {visitasHoje.slice(0, 5).map((visita) => (
+                  <Item
+                    key={visita.id}
+                    titulo={visita.clientes?.razao_social || "-"}
+                    subtitulo={`${visita.hora_visita || "--:--"} • ${
+                      visita.tipo_contato || "Visita"
+                    }`}
+                    detalhe={visita.status || "Agendada"}
+                  />
+                ))}
+
+                {visitasHoje.length === 0 && (
+                  <Vazio texto="Nenhuma visita para hoje." />
+                )}
+              </Painel>
+
+              <Painel titulo="Pedidos recentes">
+                {pedidosRecentes.map((pedido) => (
+                  <Item
+                    key={pedido.id}
+                    titulo={pedido.numero || pedido.id}
+                    subtitulo={pedido.clientes?.razao_social || "-"}
+                    detalhe={`${moeda(pedido.valor_total)} • ${
+                      pedido.status || "-"
+                    }`}
+                  />
+                ))}
+
+                {pedidosRecentes.length === 0 && (
+                  <Vazio texto="Nenhum pedido cadastrado." />
+                )}
+              </Painel>
+
+              <Painel titulo="Top clientes">
+                {topClientes.map((cliente, index) => (
+                  <Item
+                    key={cliente.nome}
+                    titulo={`${index + 1}. ${cliente.nome}`}
+                    subtitulo="Total comprado"
+                    detalhe={moeda(cliente.total)}
+                  />
+                ))}
+
+                {topClientes.length === 0 && <Vazio texto="Sem dados." />}
+              </Painel>
+
+              <Painel titulo="Top representadas">
+                {topRepresentadas.map((rep, index) => (
+                  <Item
+                    key={rep.nome}
+                    titulo={`${index + 1}. ${rep.nome}`}
+                    subtitulo="Comissão gerada"
+                    detalhe={moeda(rep.total)}
+                  />
+                ))}
+
+                {topRepresentadas.length === 0 && <Vazio texto="Sem dados." />}
+              </Painel>
+
+              <Painel titulo="Pipeline comercial">
+                {pipelineAberto.slice(0, 5).map((item) => (
+                  <Item
+                    key={item.id}
+                    titulo={item.oportunidade || "-"}
+                    subtitulo={item.clientes?.razao_social || "-"}
+                    detalhe={`${item.etapa || "-"} • ${moeda(
+                      item.valor_estimado
+                    )}`}
+                  />
+                ))}
+
+                {pipelineAberto.length === 0 && (
+                  <Vazio texto="Nenhuma oportunidade aberta." />
+                )}
+              </Painel>
+
+              <Painel titulo="Contas a receber">
+                {receber
+                  .filter((item) => item.status !== "Recebido")
+                  .slice(0, 5)
+                  .map((item) => (
+                    <Item
+                      key={item.id}
+                      titulo={item.descricao || "Conta a receber"}
+                      subtitulo={item.clientes?.razao_social || "-"}
+                      detalhe={moeda(item.valor)}
+                    />
                   ))}
 
-                  {pedidosRecentes.length === 0 && (
-                    <p className="py-8 text-center text-slate-500">
-                      Nenhum pedido cadastrado.
-                    </p>
-                  )}
-                </div>
-              </section>
+                {receber.filter((item) => item.status !== "Recebido").length ===
+                  0 && <Vazio texto="Nenhuma conta pendente." />}
+              </Painel>
 
-              <section className="rounded-2xl bg-white p-6 shadow-sm">
-                <h3 className="mb-5 text-xl font-bold text-slate-800">
-                  Top clientes
-                </h3>
-
-                <div className="space-y-3">
-                  {topClientes.map((cliente, index) => (
-                    <div
-                      key={cliente.nome}
-                      className="flex justify-between rounded-xl border p-4"
-                    >
-                      <p className="font-bold">
-                        {index + 1}. {cliente.nome}
-                      </p>
-
-                      <p className="font-bold text-blue-700">
-                        {moeda(cliente.total)}
-                      </p>
-                    </div>
+              <Painel titulo="Comissões pendentes">
+                {comissoes
+                  .filter((item) => item.status !== "Recebida")
+                  .slice(0, 5)
+                  .map((item) => (
+                    <Item
+                      key={item.id}
+                      titulo={item.empresa || "Representada"}
+                      subtitulo={item.clientes?.razao_social || "-"}
+                      detalhe={moeda(item.valor_comissao)}
+                    />
                   ))}
 
-                  {topClientes.length === 0 && (
-                    <p className="py-8 text-center text-slate-500">
-                      Nenhum cliente com vendas.
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-2xl bg-white p-6 shadow-sm">
-                <h3 className="mb-5 text-xl font-bold text-slate-800">
-                  Top representadas por comissão
-                </h3>
-
-                <div className="space-y-3">
-                  {topRepresentadas.map((rep, index) => (
-                    <div
-                      key={rep.nome}
-                      className="flex justify-between rounded-xl border p-4"
-                    >
-                      <p className="font-bold">
-                        {index + 1}. {rep.nome}
-                      </p>
-
-                      <p className="font-bold text-green-700">
-                        {moeda(rep.total)}
-                      </p>
-                    </div>
-                  ))}
-
-                  {topRepresentadas.length === 0 && (
-                    <p className="py-8 text-center text-slate-500">
-                      Nenhuma comissão registrada.
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-2xl bg-white p-6 shadow-sm">
-                <h3 className="mb-5 text-xl font-bold text-slate-800">
-                  Visitas de hoje
-                </h3>
-
-                <div className="space-y-3">
-                  {visitasHoje.map((visita) => (
-                    <div key={visita.id} className="rounded-xl border p-4">
-                      <p className="font-bold">
-                        {visita.clientes?.razao_social || "-"}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {visita.hora_visita || "-"} • {visita.status || "-"}
-                      </p>
-                      <p className="mt-2 text-sm">
-                        Próxima ação: {visita.proxima_acao || "-"}
-                      </p>
-                    </div>
-                  ))}
-
-                  {visitasHoje.length === 0 && (
-                    <p className="py-8 text-center text-slate-500">
-                      Nenhuma visita para hoje.
-                    </p>
-                  )}
-                </div>
-              </section>
+                {comissoes.filter((item) => item.status !== "Recebida").length ===
+                  0 && <Vazio texto="Nenhuma comissão pendente." />}
+              </Painel>
             </div>
           </div>
         </section>
@@ -278,4 +347,41 @@ function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
       <strong className="mt-2 block text-2xl text-slate-900">{valor}</strong>
     </div>
   );
+}
+
+function Painel({
+  titulo,
+  children,
+}: {
+  titulo: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <h3 className="mb-5 text-xl font-bold text-slate-800">{titulo}</h3>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function Item({
+  titulo,
+  subtitulo,
+  detalhe,
+}: {
+  titulo: string;
+  subtitulo: string;
+  detalhe: string;
+}) {
+  return (
+    <div className="rounded-xl border p-4">
+      <p className="font-bold text-slate-800">{titulo}</p>
+      <p className="text-sm text-slate-500">{subtitulo}</p>
+      <p className="mt-2 text-sm font-semibold text-blue-700">{detalhe}</p>
+    </div>
+  );
+}
+
+function Vazio({ texto }: { texto: string }) {
+  return <p className="py-6 text-center text-slate-500">{texto}</p>;
 }
