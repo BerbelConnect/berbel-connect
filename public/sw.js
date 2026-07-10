@@ -1,4 +1,4 @@
-const CACHE_NAME = "berbel-connect-v1";
+const CACHE_NAME = "berbel-connect-v2";
 
 const PRECACHE_URLS = [
   "/",

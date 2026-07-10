@@ -266,8 +266,13 @@ export function gerarPedidoPDF(pedido: any) {
     doc.roundedRect(12, y, 186, 24, 2, 2, "FD");
 
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    doc.setFontSize(8);
+doc.setFontSize(9);
+doc.text("Pedido comercial | CRM para representantes", 42, 21);
+
+doc.setFont("helvetica", "bold");
+doc.setFontSize(8);
+doc.setTextColor(59, 130, 246);
+doc.text("PDF PROFISSIONAL V2", 42, 28);
 
     const linhasObs = doc.splitTextToSize(observacoes, 176);
     doc.text(linhasObs.slice(0, 4), 17, y + 7);
@@ -291,5 +296,7 @@ export function gerarPedidoPDF(pedido: any) {
     doc.text(`Página ${pagina} de ${totalPaginas}`, 174, 290);
   }
 
-  doc.save(`pedido-${pedido?.numero || pedido?.id || "berbel-connect"}.pdf`);
+  doc.save(
+  `pedido-v2-${pedido?.numero || pedido?.id || "berbel-connect"}-${Date.now()}.pdf`
+);
 }
