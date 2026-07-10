@@ -100,10 +100,13 @@ function erroDeConexao(error: any) {
 
   return (
     mensagem.includes("failed to fetch") ||
+    mensagem.includes("load failed") ||
     mensagem.includes("network") ||
     mensagem.includes("fetch") ||
     mensagem.includes("internet") ||
-    mensagem.includes("offline")
+    mensagem.includes("offline") ||
+    mensagem.includes("timeout") ||
+    mensagem.includes("abort")
   );
 }
 
@@ -217,10 +220,12 @@ export default function PedidosPage() {
           .from("clientes")
           .select("id, razao_social")
           .order("razao_social"),
+
         supabase
           .from("produtos")
           .select("id, nome, preco, comissao_percentual")
           .order("nome"),
+
         supabase
           .from("pedidos")
           .select(
@@ -253,6 +258,7 @@ export default function PedidosPage() {
 
       setClientes(clientesOnline);
       setProdutos(produtosOnline);
+
       salvarClientesOffline(clientesOnline);
       salvarProdutosOffline(produtosOnline);
 
@@ -312,7 +318,10 @@ export default function PedidosPage() {
 
     window.addEventListener("online", atualizarStatus);
     window.addEventListener("offline", atualizarStatus);
-    window.addEventListener("berbel:pedidos-offline-atualizados", atualizarStatus);
+    window.addEventListener(
+      "berbel:pedidos-offline-atualizados",
+      atualizarStatus
+    );
     window.addEventListener("berbel:dados-offline-atualizados", atualizarStatus);
 
     return () => {
@@ -467,7 +476,7 @@ export default function PedidosPage() {
 
     alert(
       motivo ||
-        "Você está sem internet. O pedido foi salvo no navegador e ficará aguardando sincronização."
+        "O pedido foi salvo no navegador e ficará aguardando sincronização."
     );
 
     limparFormulario();
@@ -509,63 +518,78 @@ export default function PedidosPage() {
     if (!form.data_pedido) return alert("Informe a data do pedido.");
 
     if (!navegadorOnline()) {
-      salvarPedidoNoNavegador();
+      salvarPedidoNoNavegador(
+        "Você está sem internet. O pedido foi salvo offline e ficará aguardando sincronização."
+      );
       return;
     }
 
     setCarregando(true);
 
-    const pedidoPayload = montarPedidoPayload();
-    const itensPayload = montarItensPayload();
+    try {
+      const pedidoPayload = montarPedidoPayload();
+      const itensPayload = montarItensPayload();
 
-    const { data: pedidoCriado, error: erroPedido } = await supabase
-      .from("pedidos")
-      .insert(pedidoPayload)
-      .select()
-      .single();
+      const { data: pedidoCriado, error: erroPedido } = await supabase
+        .from("pedidos")
+        .insert(pedidoPayload)
+        .select()
+        .single();
 
-    if (erroPedido) {
+      if (erroPedido) {
+        setCarregando(false);
+
+        if (erroDeConexao(erroPedido)) {
+          salvarPedidoNoNavegador(
+            "A conexão falhou no celular. O pedido foi salvo offline para sincronizar depois."
+          );
+          return;
+        }
+
+        return alert(erroPedido.message);
+      }
+
+      const itensBanco = itensPayload.map((item) => ({
+        ...item,
+        pedido_id: pedidoCriado.id,
+      }));
+
+      const { error: erroItens } = await supabase
+        .from("pedido_itens")
+        .insert(itensBanco);
+
+      if (erroItens) {
+        setCarregando(false);
+
+        if (erroDeConexao(erroItens)) {
+          salvarPedidoNoNavegador(
+            "A conexão caiu durante o salvamento dos itens. O pedido foi salvo offline."
+          );
+          return;
+        }
+
+        return alert(erroItens.message);
+      }
+
+      await registrarFinanceiro(pedidoCriado);
+
       setCarregando(false);
 
-      if (erroDeConexao(erroPedido)) {
+      alert("Pedido salvo com sucesso.");
+      limparFormulario();
+      carregarDados();
+    } catch (error: any) {
+      setCarregando(false);
+
+      if (erroDeConexao(error)) {
         salvarPedidoNoNavegador(
-          "A conexão caiu durante o salvamento. O pedido foi salvo no navegador."
+          "A conexão falhou no celular. O pedido foi salvo offline e será sincronizado quando a internet voltar."
         );
         return;
       }
 
-      return alert(erroPedido.message);
+      alert(error?.message || "Erro inesperado ao salvar pedido.");
     }
-
-    const itensBanco = itensPayload.map((item) => ({
-      ...item,
-      pedido_id: pedidoCriado.id,
-    }));
-
-    const { error: erroItens } = await supabase
-      .from("pedido_itens")
-      .insert(itensBanco);
-
-    if (erroItens) {
-      setCarregando(false);
-
-      if (erroDeConexao(erroItens)) {
-        salvarPedidoNoNavegador(
-          "A conexão caiu durante o salvamento dos itens. O pedido foi salvo no navegador."
-        );
-        return;
-      }
-
-      return alert(erroItens.message);
-    }
-
-    await registrarFinanceiro(pedidoCriado);
-
-    setCarregando(false);
-
-    alert("Pedido salvo com sucesso.");
-    limparFormulario();
-    carregarDados();
   }
 
   async function excluirPedido(id: string) {
@@ -614,10 +638,7 @@ export default function PedidosPage() {
               <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
                 Existem <strong>{pendentesOffline}</strong> pedido(s)
                 aguardando sincronização.{" "}
-                <Link
-                  href="/pedidos/offline"
-                  className="font-bold underline"
-                >
+                <Link href="/pedidos/offline" className="font-bold underline">
                   Ver pedidos offline
                 </Link>
               </div>
