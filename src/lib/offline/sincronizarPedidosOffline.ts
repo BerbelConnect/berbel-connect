@@ -11,6 +11,29 @@ function hojeISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function numeroEhOffline(numero?: string | null) {
+  return String(numero || "").startsWith("OFF-");
+}
+
+async function gerarProximoNumeroPedido() {
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("numero")
+    .like("numero", "PED-%")
+    .order("numero", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  const ultimoNumero = data?.[0]?.numero || "PED-000000";
+  const somenteNumero = Number(String(ultimoNumero).replace("PED-", "")) || 0;
+  const proximo = String(somenteNumero + 1).padStart(6, "0");
+
+  return `PED-${proximo}`;
+}
+
 async function buscarPedidoExistente(origemOfflineId: string, numero?: string) {
   if (origemOfflineId) {
     const { data } = await supabase
@@ -22,7 +45,7 @@ async function buscarPedidoExistente(origemOfflineId: string, numero?: string) {
     if (data) return data;
   }
 
-  if (numero) {
+  if (numero && !numeroEhOffline(numero)) {
     const { data } = await supabase
       .from("pedidos")
       .select("id, numero, origem_offline_id")
@@ -54,7 +77,11 @@ async function recriarFinanceiro(pedidoCriado: any, pedido: any) {
   const dataBase =
     pedido.data_entrega_prevista || pedido.data_pedido || hojeISO();
 
-  await supabase.from("contas_receber").delete().eq("pedido_id", pedidoCriado.id);
+  await supabase
+    .from("contas_receber")
+    .delete()
+    .eq("pedido_id", pedidoCriado.id);
+
   await supabase
     .from("comissoes_financeiro")
     .delete()
@@ -113,13 +140,7 @@ export async function sincronizarPedidosOffline() {
   let erros = 0;
 
   for (const item of fila) {
-    const origemOfflineId =
-      item.pedido?.origem_offline_id || item.id_local;
-
-    const pedidoPayload = {
-      ...item.pedido,
-      origem_offline_id: origemOfflineId,
-    };
+    const origemOfflineId = item.pedido?.origem_offline_id || item.id_local;
 
     try {
       atualizarPedidoOffline(item.id_local, {
@@ -128,12 +149,24 @@ export async function sincronizarPedidosOffline() {
         tentativas: Number(item.tentativas || 0) + 1,
       });
 
+      let pedidoPayload = {
+        ...item.pedido,
+        origem_offline_id: origemOfflineId,
+      };
+
       let pedidoCriado = await buscarPedidoExistente(
         origemOfflineId,
         pedidoPayload.numero
       );
 
       if (!pedidoCriado) {
+        if (!pedidoPayload.numero || numeroEhOffline(pedidoPayload.numero)) {
+          pedidoPayload = {
+            ...pedidoPayload,
+            numero: await gerarProximoNumeroPedido(),
+          };
+        }
+
         const { data, error } = await supabase
           .from("pedidos")
           .insert(pedidoPayload)
@@ -161,13 +194,18 @@ export async function sincronizarPedidosOffline() {
       }
 
       if (!pedidoCriado?.id) {
-        throw new Error("Pedido não foi localizado após tentativa de sincronização.");
+        throw new Error(
+          "Pedido não foi localizado após tentativa de sincronização."
+        );
       }
 
       await recriarItensPedido(pedidoCriado.id, item.itens || []);
 
       try {
-        await recriarFinanceiro(pedidoCriado, pedidoPayload);
+        await recriarFinanceiro(pedidoCriado, {
+          ...pedidoPayload,
+          numero: pedidoCriado.numero || pedidoPayload.numero,
+        });
       } catch (financeiroError) {
         console.warn(
           "Pedido sincronizado, mas houve falha ao recriar financeiro:",
