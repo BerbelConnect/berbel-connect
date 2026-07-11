@@ -6,6 +6,7 @@ export type PedidoOffline = {
   atualizado_em: string;
   status: PedidoOfflineStatus;
   erro?: string;
+  tentativas?: number;
   pedido: any;
   itens: any[];
 };
@@ -19,6 +20,19 @@ function gerarIdLocal() {
 function notificarAtualizacao() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event("berbel:pedidos-offline-atualizados"));
+}
+
+function mesmoPedido(a: PedidoOffline, pedido: any) {
+  const numeroA = String(a?.pedido?.numero || "");
+  const numeroB = String(pedido?.numero || "");
+
+  if (numeroA && numeroB && numeroA === numeroB) return true;
+
+  return (
+    a?.pedido?.cliente_id === pedido?.cliente_id &&
+    a?.pedido?.data_pedido === pedido?.data_pedido &&
+    Number(a?.pedido?.valor_total || 0) === Number(pedido?.valor_total || 0)
+  );
 }
 
 export function listarPedidosOffline(): PedidoOffline[] {
@@ -49,16 +63,52 @@ export function salvarPedidoOffline({
   pedido: any;
   itens: any[];
 }) {
+  const fila = listarPedidosOffline();
+
+  const existente = fila.find((item) => mesmoPedido(item, pedido));
+
+  if (existente) {
+    const pedidoAtualizado: PedidoOffline = {
+      ...existente,
+      atualizado_em: new Date().toISOString(),
+      status: "pendente",
+      erro: "",
+      pedido: {
+        ...pedido,
+        origem_offline_id:
+          pedido?.origem_offline_id ||
+          existente.pedido?.origem_offline_id ||
+          existente.id_local,
+      },
+      itens,
+    };
+
+    const novaFila = fila.map((item) =>
+      item.id_local === existente.id_local ? pedidoAtualizado : item
+    );
+
+    localStorage.setItem(CHAVE_PEDIDOS_OFFLINE, JSON.stringify(novaFila));
+    notificarAtualizacao();
+
+    return pedidoAtualizado;
+  }
+
+  const idLocal = gerarIdLocal();
+
   const novoPedido: PedidoOffline = {
-    id_local: gerarIdLocal(),
+    id_local: idLocal,
     criado_em: new Date().toISOString(),
     atualizado_em: new Date().toISOString(),
     status: "pendente",
-    pedido,
+    erro: "",
+    tentativas: 0,
+    pedido: {
+      ...pedido,
+      origem_offline_id: pedido?.origem_offline_id || idLocal,
+    },
     itens,
   };
 
-  const fila = listarPedidosOffline();
   const novaFila = [novoPedido, ...fila];
 
   localStorage.setItem(CHAVE_PEDIDOS_OFFLINE, JSON.stringify(novaFila));

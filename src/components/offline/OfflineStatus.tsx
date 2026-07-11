@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { contarPedidosOffline } from "@/lib/offline/pedidosOffline";
 import { sincronizarPedidosOffline } from "@/lib/offline/sincronizarPedidosOffline";
 
@@ -11,41 +11,9 @@ export function OfflineStatus() {
   const [sincronizando, setSincronizando] = useState(false);
   const [ultimaMensagem, setUltimaMensagem] = useState("");
 
-  const sincronizacaoEmAndamento = useRef(false);
-  const ultimaTentativa = useRef(0);
-
   function atualizarStatus() {
     setOnline(navigator.onLine);
     setPendentes(contarPedidosOffline());
-  }
-
-  async function executarSincronizacaoAutomatica() {
-    if (!navigator.onLine) return;
-    if (sincronizacaoEmAndamento.current) return;
-
-    const totalPendentes = contarPedidosOffline();
-
-    if (totalPendentes === 0) return;
-
-    const agora = Date.now();
-
-    // Evita tentativas repetidas em sequência caso algum pedido dê erro.
-    if (agora - ultimaTentativa.current < 10000) return;
-
-    ultimaTentativa.current = agora;
-    sincronizacaoEmAndamento.current = true;
-    setSincronizando(true);
-    setUltimaMensagem("Internet voltou. Sincronizando pedidos offline...");
-
-    const resultado = await sincronizarPedidosOffline();
-
-    setSincronizando(false);
-    sincronizacaoEmAndamento.current = false;
-    setUltimaMensagem(resultado.mensagem);
-
-    atualizarStatus();
-
-    window.dispatchEvent(new Event("berbel:pedidos-offline-atualizados"));
   }
 
   useEffect(() => {
@@ -53,7 +21,9 @@ export function OfflineStatus() {
 
     function aoVoltarInternet() {
       atualizarStatus();
-      executarSincronizacaoAutomatica();
+      setUltimaMensagem(
+        "Internet voltou. Entre em Pedidos Offline e clique em Sincronizar todos."
+      );
     }
 
     function aoPerderInternet() {
@@ -63,10 +33,6 @@ export function OfflineStatus() {
 
     function aoAtualizarFila() {
       atualizarStatus();
-
-      if (navigator.onLine) {
-        executarSincronizacaoAutomatica();
-      }
     }
 
     window.addEventListener("online", aoVoltarInternet);
@@ -76,12 +42,6 @@ export function OfflineStatus() {
       "berbel:pedidos-offline-atualizados",
       aoAtualizarFila
     );
-
-    // Se abrir o sistema já com internet e houver pedido pendente,
-    // ele também tenta sincronizar automaticamente.
-    setTimeout(() => {
-      executarSincronizacaoAutomatica();
-    }, 1000);
 
     return () => {
       window.removeEventListener("online", aoVoltarInternet);
@@ -140,11 +100,7 @@ export function OfflineStatus() {
         </p>
       )}
 
-      {ultimaMensagem && (
-        <p className="mt-1 text-slate-300">
-          {ultimaMensagem}
-        </p>
-      )}
+      {ultimaMensagem && <p className="mt-1 text-slate-300">{ultimaMensagem}</p>}
 
       {online && pendentes > 0 && (
         <div className="mt-3">
