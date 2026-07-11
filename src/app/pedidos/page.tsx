@@ -106,8 +106,17 @@ function erroDeConexao(error: any) {
     mensagem.includes("internet") ||
     mensagem.includes("offline") ||
     mensagem.includes("timeout") ||
-    mensagem.includes("abort")
+    mensagem.includes("abort") ||
+    mensagem.includes("connection timeout") ||
+    mensagem.includes("disconnect") ||
+    mensagem.includes("reset before headers")
   );
+}
+
+function dispositivoMovel() {
+  if (typeof navigator === "undefined") return false;
+
+  return /iphone|ipad|ipod|android/i.test(navigator.userAgent);
 }
 
 const pedidoInicial: PedidoForm = {
@@ -171,7 +180,7 @@ export default function PedidosPage() {
   }
 
   async function gerarNovoNumero() {
-    if (!navegadorOnline()) {
+    if (!navegadorOnline() || dispositivoMovel()) {
       setForm((atual) => ({
         ...atual,
         numero: atual.numero || gerarNumeroLocal(),
@@ -511,20 +520,40 @@ export default function PedidosPage() {
       });
     }
   }
+    async function salvarPedido() {
+    if (carregando) return;
 
-  async function salvarPedido() {
     if (!form.cliente_id) return alert("Selecione o cliente.");
     if (itens.length === 0) return alert("Adicione ao menos um produto.");
     if (!form.data_pedido) return alert("Informe a data do pedido.");
 
+    // No celular, o pedido é salvo primeiro no aparelho.
+    // Isso evita travamento no iPhone/Safari quando a requisição ao Supabase demora.
+    if (dispositivoMovel()) {
+      setCarregando(true);
+
+      salvarPedidoNoNavegador(
+        "Pedido salvo no celular. Depois entre em Pedidos Offline e toque em Sincronizar todos."
+      );
+
+      setCarregando(false);
+      return;
+    }
+
     if (!navegadorOnline()) {
+      setCarregando(true);
+
       salvarPedidoNoNavegador(
         "Você está sem internet. O pedido foi salvo offline e ficará aguardando sincronização."
       );
+
+      setCarregando(false);
       return;
     }
 
     setCarregando(true);
+
+    let pedidoCriadoOnline: any = null;
 
     try {
       const pedidoPayload = montarPedidoPayload();
@@ -541,13 +570,15 @@ export default function PedidosPage() {
 
         if (erroDeConexao(erroPedido)) {
           salvarPedidoNoNavegador(
-            "A conexão falhou no celular. O pedido foi salvo offline para sincronizar depois."
+            "A conexão falhou. O pedido foi salvo offline para sincronizar depois."
           );
           return;
         }
 
         return alert(erroPedido.message);
       }
+
+      pedidoCriadoOnline = pedidoCriado;
 
       const itensBanco = itensPayload.map((item) => ({
         ...item,
@@ -561,17 +592,20 @@ export default function PedidosPage() {
       if (erroItens) {
         setCarregando(false);
 
-        if (erroDeConexao(erroItens)) {
-          salvarPedidoNoNavegador(
-            "A conexão caiu durante o salvamento dos itens. O pedido foi salvo offline."
-          );
-          return;
-        }
-
-        return alert(erroItens.message);
+        alert(
+          "O pedido principal foi salvo, mas houve erro ao salvar os itens. Verifique a consulta de pedidos antes de repetir."
+        );
+        return;
       }
 
-      await registrarFinanceiro(pedidoCriado);
+      try {
+        await registrarFinanceiro(pedidoCriado);
+      } catch (erroFinanceiro) {
+        console.warn(
+          "Pedido salvo, mas houve falha no financeiro:",
+          erroFinanceiro
+        );
+      }
 
       setCarregando(false);
 
@@ -581,9 +615,18 @@ export default function PedidosPage() {
     } catch (error: any) {
       setCarregando(false);
 
+      if (pedidoCriadoOnline?.id) {
+        alert(
+          "O pedido foi salvo, mas houve falha em alguma etapa complementar. Verifique em Consulta de Pedidos antes de repetir."
+        );
+        limparFormulario();
+        carregarDados();
+        return;
+      }
+
       if (erroDeConexao(error)) {
         salvarPedidoNoNavegador(
-          "A conexão falhou no celular. O pedido foi salvo offline e será sincronizado quando a internet voltar."
+          "A conexão falhou. O pedido foi salvo offline e será sincronizado depois."
         );
         return;
       }
@@ -603,7 +646,8 @@ export default function PedidosPage() {
 
     carregarDados();
   }
-    return (
+
+  return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
@@ -616,6 +660,14 @@ export default function PedidosPage() {
               <div className="mb-6 rounded-2xl border border-yellow-300 bg-yellow-50 p-5 text-sm text-yellow-800">
                 <strong>Modo offline ativo.</strong> Os pedidos feitos agora
                 serão salvos no navegador e sincronizados depois.
+              </div>
+            )}
+
+            {dispositivoMovel() && (
+              <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
+                <strong>Modo celular ativo.</strong> Para evitar travamento, os
+                pedidos criados no celular serão salvos primeiro offline.
+                Depois sincronize em <strong>Pedidos Offline</strong>.
               </div>
             )}
 
@@ -651,8 +703,7 @@ export default function PedidosPage() {
               <Card titulo="Produtos cache" valor={produtos.length} />
               <Card titulo="Offline" valor={pendentesOffline} />
             </div>
-
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">
@@ -692,7 +743,8 @@ export default function PedidosPage() {
                     Novo pedido
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    O pedido pode ser salvo com ou sem internet.
+                    No computador salva online. No celular salva primeiro
+                    offline para evitar travamento.
                   </p>
                 </div>
 
@@ -797,7 +849,8 @@ export default function PedidosPage() {
                 />
               </div>
             </section>
-                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-5 text-xl font-bold text-slate-800">
                 Produtos do pedido
               </h3>
@@ -931,6 +984,8 @@ export default function PedidosPage() {
                   >
                     {carregando
                       ? "Salvando..."
+                      : dispositivoMovel()
+                      ? "Salvar no celular"
                       : online
                       ? "Salvar pedido"
                       : "Salvar offline"}
@@ -1032,7 +1087,7 @@ export default function PedidosPage() {
   );
 }
 
-function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
+function Card({ titulo, valor }: { titulo: string | number; valor: string | number }) {
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm">
       <p className="text-sm text-slate-500">{titulo}</p>
