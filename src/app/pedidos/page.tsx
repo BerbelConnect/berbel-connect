@@ -6,18 +6,6 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
-import {
-  contarPedidosOffline,
-  navegadorOnline,
-  salvarPedidoOffline,
-} from "@/lib/offline/pedidosOffline";
-import {
-  listarClientesOffline,
-  listarProdutosOffline,
-  obterDataAtualizacaoCache,
-  salvarClientesOffline,
-  salvarProdutosOffline,
-} from "@/lib/offline/dadosOffline";
 
 type Cliente = {
   id: string;
@@ -29,12 +17,14 @@ type Produto = {
   nome: string;
   preco: number;
   preco_custo?: number;
+  fornecedor_id?: string | null;
   comissao_percentual: number;
 };
 
 type ItemPedido = {
   produto_id: string;
   produto_nome: string;
+  fornecedor_id: string | null;
   quantidade: string;
   valor_unitario: string;
   valor_total: string;
@@ -61,18 +51,6 @@ function hojeISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function gerarNumeroLocal() {
-  const data = new Date();
-  const ano = data.getFullYear();
-  const mes = String(data.getMonth() + 1).padStart(2, "0");
-  const dia = String(data.getDate()).padStart(2, "0");
-  const hora = String(data.getHours()).padStart(2, "0");
-  const minuto = String(data.getMinutes()).padStart(2, "0");
-  const segundo = String(data.getSeconds()).padStart(2, "0");
-
-  return `OFF-${ano}${mes}${dia}-${hora}${minuto}${segundo}`;
-}
-
 function formatarMoeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -87,16 +65,6 @@ function formatarData(data?: string | null) {
     return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
   } catch {
     return "-";
-  }
-}
-
-function formatarDataHora(data?: string | null) {
-  if (!data) return "Nunca atualizado";
-
-  try {
-    return new Date(data).toLocaleString("pt-BR");
-  } catch {
-    return "Data inválida";
   }
 }
 
@@ -118,18 +86,34 @@ function erroDeConexao(error: any) {
   );
 }
 
-function dispositivoMovel() {
-  if (typeof navigator === "undefined") return false;
-
-  return /iphone|ipad|ipod|android/i.test(navigator.userAgent);
+function normalizarTexto(valor?: string | null) {
+  return String(valor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function tipoGeraFinanceiroVenda(tipo?: string | null) {
-  return tipo === "Revenda" || tipo === "Venda direta";
+  const tipoNormalizado = normalizarTexto(tipo);
+
+  return (
+    tipoNormalizado === "revenda" ||
+    tipoNormalizado === "revenda propria" ||
+    tipoNormalizado === "venda direta" ||
+    tipoNormalizado === "venda propria" ||
+    tipoNormalizado === "compra propria"
+  );
+}
+
+function tipoRepresentacao(tipo?: string | null) {
+  return normalizarTexto(tipo) === "representacao";
 }
 
 function statusGeraFinanceiro(status?: string | null) {
-  return status !== "Orçamento" && status !== "Cancelado";
+  const statusNormalizado = normalizarTexto(status);
+
+  return statusNormalizado !== "orcamento" && statusNormalizado !== "cancelado";
 }
 
 const pedidoInicial: PedidoForm = {
@@ -146,6 +130,7 @@ const pedidoInicial: PedidoForm = {
 const itemInicial: ItemPedido = {
   produto_id: "",
   produto_nome: "",
+  fornecedor_id: null,
   quantidade: "1",
   valor_unitario: "",
   valor_total: "",
@@ -168,77 +153,42 @@ export default function PedidosPage() {
 
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
-  const [carregandoCache, setCarregandoCache] = useState(false);
-  const [online, setOnline] = useState(true);
-  const [pendentesOffline, setPendentesOffline] = useState(0);
-  const [usandoCache, setUsandoCache] = useState(false);
-  const [cacheAtualizadoEm, setCacheAtualizadoEm] = useState<string | null>(
-    null
-  );
-    function atualizarPendentesOffline() {
-    setOnline(navegadorOnline());
-    setPendentesOffline(contarPedidosOffline());
-    setCacheAtualizadoEm(obterDataAtualizacaoCache());
-  }
+  const [carregandoDados, setCarregandoDados] = useState(true);
+    async function gerarProximoNumeroPedido() {
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select("numero")
+      .like("numero", "PED-%")
+      .order("numero", { ascending: false })
+      .limit(1);
 
-  function carregarDadosDoCache() {
-    const clientesCache = listarClientesOffline();
-    const produtosCache = listarProdutosOffline();
+    if (error) {
+      throw error;
+    }
 
-    setClientes(clientesCache);
-    setProdutos(produtosCache);
-    setUsandoCache(true);
-    setCacheAtualizadoEm(obterDataAtualizacaoCache());
+    const ultimoNumero = data?.[0]?.numero || "PED-000000";
+    const somenteNumero =
+      Number(String(ultimoNumero).replace("PED-", "")) || 0;
+    const proximo = String(somenteNumero + 1).padStart(6, "0");
 
-    return {
-      clientesCache,
-      produtosCache,
-    };
+    return `PED-${proximo}`;
   }
 
   async function gerarNovoNumero() {
-    if (!navegadorOnline() || dispositivoMovel()) {
-      setForm((atual) => ({
-        ...atual,
-        numero: atual.numero || gerarNumeroLocal(),
-      }));
-      return;
-    }
-
     try {
-      const { count, error } = await supabase
-        .from("pedidos")
-        .select("id", { count: "exact", head: true });
-
-      if (error) throw error;
-
-      const proximo = String((count || 0) + 1).padStart(6, "0");
+      const novoNumero = await gerarProximoNumeroPedido();
 
       setForm((atual) => ({
         ...atual,
-        numero: atual.numero || `PED-${proximo}`,
+        numero: novoNumero,
       }));
-    } catch {
-      setForm((atual) => ({
-        ...atual,
-        numero: atual.numero || gerarNumeroLocal(),
-      }));
+    } catch (error: any) {
+      alert(error?.message || "Erro ao gerar número do pedido.");
     }
   }
 
   async function carregarDados() {
-    atualizarPendentesOffline();
-
-    if (!navegadorOnline()) {
-      carregarDadosDoCache();
-
-      setForm((atual) => ({
-        ...atual,
-        numero: atual.numero || gerarNumeroLocal(),
-      }));
-
-      return;
-    }
+    setCarregandoDados(true);
 
     try {
       const [clientesResp, produtosResp, pedidosResp] = await Promise.all([
@@ -249,7 +199,7 @@ export default function PedidosPage() {
 
         supabase
           .from("produtos")
-          .select("id, nome, preco, preco_custo, comissao_percentual")
+          .select("id, nome, preco, preco_custo, fornecedor_id, comissao_percentual")
           .order("nome"),
 
         supabase
@@ -278,92 +228,40 @@ export default function PedidosPage() {
 
       if (clientesResp.error) throw clientesResp.error;
       if (produtosResp.error) throw produtosResp.error;
+      if (pedidosResp.error) throw pedidosResp.error;
 
-      const clientesOnline = clientesResp.data || [];
-      const produtosOnline = produtosResp.data || [];
-
-      setClientes(clientesOnline);
-      setProdutos(produtosOnline);
-
-      salvarClientesOffline(clientesOnline);
-      salvarProdutosOffline(produtosOnline);
-
-      if (!pedidosResp.error) {
-        setPedidos(pedidosResp.data || []);
-      }
-
-      setUsandoCache(false);
-      setCacheAtualizadoEm(obterDataAtualizacaoCache());
+      setClientes(clientesResp.data || []);
+      setProdutos(produtosResp.data || []);
+      setPedidos(pedidosResp.data || []);
 
       if (!form.numero) {
-        await gerarNovoNumero();
+        const novoNumero = await gerarProximoNumeroPedido();
+
+        setForm((atual) => ({
+          ...atual,
+          numero: atual.numero || novoNumero,
+        }));
       }
-    } catch (error) {
-      console.error("Erro ao carregar dados online. Usando cache.", error);
+    } catch (error: any) {
+      console.error("Erro ao carregar dados:", error);
 
-      const { clientesCache, produtosCache } = carregarDadosDoCache();
-
-      if (clientesCache.length === 0 || produtosCache.length === 0) {
+      if (erroDeConexao(error)) {
         alert(
-          "Não foi possível carregar dados online e ainda não existe cache offline de clientes/produtos."
+          "Falha de conexão. Verifique sua internet e tente carregar novamente."
         );
+      } else {
+        alert(error?.message || "Erro ao carregar dados.");
       }
-
-      setForm((atual) => ({
-        ...atual,
-        numero: atual.numero || gerarNumeroLocal(),
-      }));
+    } finally {
+      setCarregandoDados(false);
     }
-  }
-
-  async function atualizarCacheManual() {
-    if (!navegadorOnline()) {
-      alert("Você está sem internet. Conecte para atualizar os dados offline.");
-      return;
-    }
-
-    setCarregandoCache(true);
-    await carregarDados();
-    setCarregandoCache(false);
-
-    alert("Clientes e produtos atualizados para uso offline.");
   }
 
   useEffect(() => {
     carregarDados();
-
-    function atualizarStatus() {
-      atualizarPendentesOffline();
-
-      if (navegadorOnline()) {
-        carregarDados();
-      } else {
-        carregarDadosDoCache();
-      }
-    }
-
-    window.addEventListener("online", atualizarStatus);
-    window.addEventListener("offline", atualizarStatus);
-    window.addEventListener(
-      "berbel:pedidos-offline-atualizados",
-      atualizarStatus
-    );
-    window.addEventListener("berbel:dados-offline-atualizados", atualizarStatus);
-
-    return () => {
-      window.removeEventListener("online", atualizarStatus);
-      window.removeEventListener("offline", atualizarStatus);
-      window.removeEventListener(
-        "berbel:pedidos-offline-atualizados",
-        atualizarStatus
-      );
-      window.removeEventListener(
-        "berbel:dados-offline-atualizados",
-        atualizarStatus
-      );
-    };
   }, []);
-    function recalcularItem(item: ItemPedido) {
+
+  function recalcularItem(item: ItemPedido) {
     const quantidade = Number(item.quantidade || 0);
     const valorUnitario = Number(item.valor_unitario || 0);
     const valorCustoUnitario = Number(item.valor_custo_unitario || 0);
@@ -392,6 +290,7 @@ export default function PedidosPage() {
       ...itemAtual,
       produto_id: produtoId,
       produto_nome: produto?.nome || "",
+      fornecedor_id: produto?.fornecedor_id || null,
       valor_unitario: String(produto?.preco || ""),
       valor_custo_unitario: String(produto?.preco_custo || ""),
       comissao_percentual: String(produto?.comissao_percentual || ""),
@@ -408,8 +307,7 @@ export default function PedidosPage() {
 
     setItemAtual(novoItem);
   }
-
-  function adicionarItem() {
+    function adicionarItem() {
     if (!itemAtual.produto_id) return alert("Selecione um produto.");
     if (!itemAtual.quantidade) return alert("Informe a quantidade.");
 
@@ -469,10 +367,10 @@ export default function PedidosPage() {
     );
   }, [pedidos, busca]);
 
-  function montarPedidoPayload() {
+  function montarPedidoPayload(numeroFinal: string) {
     return {
       cliente_id: form.cliente_id,
-      numero: form.numero || gerarNumeroLocal(),
+      numero: numeroFinal,
       data_pedido: form.data_pedido,
       data_entrega_prevista: form.data_entrega_prevista || null,
       data_entrega_real: form.data_entrega_real || null,
@@ -490,6 +388,7 @@ export default function PedidosPage() {
     return itens.map((item) => ({
       produto_id: item.produto_id,
       produto_nome: item.produto_nome,
+      fornecedor_id: item.fornecedor_id || null,
       quantidade: Number(item.quantidade || 0),
       valor_unitario: Number(item.valor_unitario || 0),
       valor_total: Number(item.valor_total || 0),
@@ -517,25 +416,27 @@ export default function PedidosPage() {
     }, 200);
   }
 
-  function salvarPedidoNoNavegador(motivo?: string) {
-    const pedidoPayload = montarPedidoPayload();
-    const itensPayload = montarItensPayload();
+  function agruparCustoPorFornecedor(itensFinanceiro: any[]) {
+    const mapa = new Map<
+      string,
+      { fornecedor_id: string | null; valor: number }
+    >();
 
-    salvarPedidoOffline({
-      pedido: pedidoPayload,
-      itens: itensPayload,
-    });
+    for (const item of itensFinanceiro || []) {
+      const fornecedorId = item.fornecedor_id || null;
+      const chave = fornecedorId || "sem-fornecedor";
+      const valorAtual = mapa.get(chave)?.valor || 0;
+      const valorItem = Number(item.valor_custo_total || 0);
 
-    atualizarPendentesOffline();
+      mapa.set(chave, {
+        fornecedor_id: fornecedorId,
+        valor: valorAtual + valorItem,
+      });
+    }
 
-    alert(
-      motivo ||
-        "O pedido foi salvo no navegador e ficará aguardando sincronização."
-    );
-
-    limparFormulario();
+    return Array.from(mapa.values()).filter((grupo) => grupo.valor > 0);
   }
-    async function registrarFinanceiro(pedidoCriado: any) {
+    async function registrarFinanceiro(pedidoCriado: any, itensFinanceiro: any[]) {
     if (!pedidoCriado?.id) return;
 
     const dataBase =
@@ -562,34 +463,40 @@ export default function PedidosPage() {
 
     if (tipoGeraFinanceiroVenda(form.tipo)) {
       if (valorTotalPedido > 0) {
-        await supabase.from("contas_receber").insert({
+        const { error } = await supabase.from("contas_receber").insert({
           pedido_id: pedidoCriado.id,
           cliente_id: form.cliente_id,
           descricao: `Recebimento do pedido ${pedidoCriado.numero || form.numero}`,
           valor: valorTotalPedido,
           data_vencimento: dataBase,
-          status: "Em aberto",
+          status: "Pendente",
         });
+
+        if (error) throw error;
       }
 
-      if (valorCustoTotalPedido > 0) {
-        await supabase.from("contas_pagar").insert({
+      const custosPorFornecedor = agruparCustoPorFornecedor(itensFinanceiro);
+
+      for (const grupo of custosPorFornecedor) {
+        const { error } = await supabase.from("contas_pagar").insert({
           pedido_id: pedidoCriado.id,
-          fornecedor_id: null,
+          fornecedor_id: grupo.fornecedor_id,
           descricao: `Custo de mercadoria do pedido ${
             pedidoCriado.numero || form.numero
           }`,
-          valor: valorCustoTotalPedido,
+          valor: Number(grupo.valor || 0),
           data_vencimento: dataBase,
-          status: "Em aberto",
+          status: "Pendente",
         });
+
+        if (error) throw error;
       }
 
       return;
     }
 
-    if (form.tipo === "Representação" && valorTotalComissao > 0) {
-      await supabase.from("comissoes_financeiro").insert({
+    if (tipoRepresentacao(form.tipo) && valorTotalComissao > 0) {
+      const { error } = await supabase.from("comissoes_financeiro").insert({
         pedido_id: pedidoCriado.id,
         cliente_id: form.cliente_id,
         empresa: form.tipo,
@@ -598,6 +505,8 @@ export default function PedidosPage() {
         data_previsao: dataBase,
         status: "Pendente",
       });
+
+      if (error) throw error;
     }
   }
 
@@ -608,26 +517,10 @@ export default function PedidosPage() {
     if (itens.length === 0) return alert("Adicione ao menos um produto.");
     if (!form.data_pedido) return alert("Informe a data do pedido.");
 
-    if (dispositivoMovel()) {
-      setCarregando(true);
-
-      salvarPedidoNoNavegador(
-        "Pedido salvo no celular. Depois entre em Pedidos Offline e toque em Sincronizar todos."
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return alert(
+        "Você está sem internet. Conecte-se para salvar o pedido."
       );
-
-      setCarregando(false);
-      return;
-    }
-
-    if (!navegadorOnline()) {
-      setCarregando(true);
-
-      salvarPedidoNoNavegador(
-        "Você está sem internet. O pedido foi salvo offline e ficará aguardando sincronização."
-      );
-
-      setCarregando(false);
-      return;
     }
 
     setCarregando(true);
@@ -635,7 +528,12 @@ export default function PedidosPage() {
     let pedidoCriadoOnline: any = null;
 
     try {
-      const pedidoPayload = montarPedidoPayload();
+      const numeroFinal =
+        !form.numero || form.numero.startsWith("OFF-")
+          ? await gerarProximoNumeroPedido()
+          : form.numero;
+
+      const pedidoPayload = montarPedidoPayload(numeroFinal);
       const itensPayload = montarItensPayload();
 
       const { data: pedidoCriado, error: erroPedido } = await supabase
@@ -645,16 +543,7 @@ export default function PedidosPage() {
         .single();
 
       if (erroPedido) {
-        setCarregando(false);
-
-        if (erroDeConexao(erroPedido)) {
-          salvarPedidoNoNavegador(
-            "A conexão falhou. O pedido foi salvo offline para sincronizar depois."
-          );
-          return;
-        }
-
-        return alert(erroPedido.message);
+        throw erroPedido;
       }
 
       pedidoCriadoOnline = pedidoCriado;
@@ -669,48 +558,37 @@ export default function PedidosPage() {
         .insert(itensBanco);
 
       if (erroItens) {
-        setCarregando(false);
-
-        alert(
-          "O pedido principal foi salvo, mas houve erro ao salvar os itens. Verifique a consulta de pedidos antes de repetir."
-        );
-        return;
+        throw erroItens;
       }
 
-      try {
-        await registrarFinanceiro(pedidoCriado);
-      } catch (erroFinanceiro) {
-        console.warn(
-          "Pedido salvo, mas houve falha no financeiro:",
-          erroFinanceiro
-        );
-      }
-
-      setCarregando(false);
+      await registrarFinanceiro(pedidoCriado, itensPayload);
 
       alert("Pedido salvo com sucesso.");
+
       limparFormulario();
-      carregarDados();
+      await carregarDados();
     } catch (error: any) {
-      setCarregando(false);
+      console.error("Erro ao salvar pedido:", error);
 
       if (pedidoCriadoOnline?.id) {
         alert(
-          "O pedido foi salvo, mas houve falha em alguma etapa complementar. Verifique em Consulta de Pedidos antes de repetir."
+          "O pedido principal foi criado, mas houve erro em alguma etapa financeira ou nos itens. Verifique em Consulta de Pedidos antes de repetir."
         );
-        limparFormulario();
-        carregarDados();
+
+        await carregarDados();
         return;
       }
 
       if (erroDeConexao(error)) {
-        salvarPedidoNoNavegador(
-          "A conexão falhou. O pedido foi salvo offline e será sincronizado depois."
+        alert(
+          "Falha de conexão. O pedido NÃO foi salvo. Verifique sua internet e tente novamente."
         );
         return;
       }
 
       alert(error?.message || "Erro inesperado ao salvar pedido.");
+    } finally {
+      setCarregando(false);
     }
   }
 
@@ -737,86 +615,25 @@ export default function PedidosPage() {
           <PageHeader titulo="Pedidos" subtitulo="ERP Comercial" />
 
           <div className="p-8">
-            {!online && (
-              <div className="mb-6 rounded-2xl border border-yellow-300 bg-yellow-50 p-5 text-sm text-yellow-800">
-                <strong>Modo offline ativo.</strong> Os pedidos feitos agora
-                serão salvos no navegador e sincronizados depois.
-              </div>
-            )}
-
-            {dispositivoMovel() && (
+            {carregandoDados && (
               <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
-                <strong>Modo celular ativo.</strong> Para evitar travamento, os
-                pedidos criados no celular serão salvos primeiro offline.
-                Depois sincronize em <strong>Pedidos Offline</strong>.
+                Carregando dados do sistema...
               </div>
             )}
 
-            {usandoCache && (
-              <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
-                <strong>Dados offline carregados.</strong> Clientes e produtos
-                estão sendo usados a partir do armazenamento do navegador.
-              </div>
-            )}
-
-            {(clientes.length === 0 || produtos.length === 0) && (
-              <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-                <strong>Atenção:</strong> ainda não há clientes/produtos salvos
-                para uso offline. Abra esta tela com internet e clique em
-                atualizar dados offline.
-              </div>
-            )}
-
-            {pendentesOffline > 0 && (
-              <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
-                Existem <strong>{pendentesOffline}</strong> pedido(s)
-                aguardando sincronização.{" "}
-                <Link href="/pedidos/offline" className="font-bold underline">
-                  Ver pedidos offline
-                </Link>
-              </div>
-            )}
+            <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
+              <strong>Salvamento online ativo.</strong> Os pedidos não serão
+              mais salvos offline. Para salvar pedidos, é necessário estar
+              conectado à internet.
+            </div>
 
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
               <Card titulo="Pedidos" valor={pedidos.length} />
               <Card titulo="Filtrados" valor={pedidosFiltrados.length} />
-              <Card titulo="Clientes cache" valor={clientes.length} />
-              <Card titulo="Produtos cache" valor={produtos.length} />
-              <Card titulo="Offline" valor={pendentesOffline} />
+              <Card titulo="Total venda" valor={formatarMoeda(valorTotalPedido)} />
+              <Card titulo="Custo" valor={formatarMoeda(valorCustoTotalPedido)} />
+              <Card titulo="Lucro" valor={formatarMoeda(lucroTotalPedido)} />
             </div>
-
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">
-                    Dados para uso offline
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Última atualização:{" "}
-                    <strong>{formatarDataHora(cacheAtualizadoEm)}</strong>
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 md:flex-row">
-                  <button
-                    onClick={atualizarCacheManual}
-                    disabled={carregandoCache}
-                    className="rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white disabled:opacity-60"
-                  >
-                    {carregandoCache
-                      ? "Atualizando..."
-                      : "Atualizar dados offline"}
-                  </button>
-
-                  <Link
-                    href="/pedidos/offline"
-                    className="rounded-xl border border-slate-300 px-6 py-3 text-center font-semibold"
-                  >
-                    Pedidos offline
-                  </Link>
-                </div>
-              </div>
-            </section>
 
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
@@ -825,8 +642,9 @@ export default function PedidosPage() {
                     Novo pedido
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    Revenda e Venda direta geram contas a receber e a pagar
-                    automaticamente quando o status não for Orçamento.
+                    Revenda, Revenda Própria e Venda direta geram contas a
+                    receber e contas a pagar automaticamente quando o status não
+                    for Orçamento.
                   </p>
                 </div>
 
@@ -879,7 +697,9 @@ export default function PedidosPage() {
                 >
                   <option>Representação</option>
                   <option>Revenda</option>
+                  <option>Revenda Própria</option>
                   <option>Venda direta</option>
+                  <option>Venda própria</option>
                   <option>Orçamento</option>
                 </select>
 
@@ -1016,7 +836,7 @@ export default function PedidosPage() {
                         <td className="px-4 py-4">
                           {formatarMoeda(item.valor_total)}
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-4 py-4 text-red-700">
                           {formatarMoeda(item.valor_custo_total)}
                         </td>
                         <td className="px-4 py-4 text-blue-700">
@@ -1086,13 +906,7 @@ export default function PedidosPage() {
                   disabled={carregando}
                   className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
                 >
-                  {carregando
-                    ? "Salvando..."
-                    : dispositivoMovel()
-                    ? "Salvar no celular"
-                    : online
-                    ? "Salvar pedido"
-                    : "Salvar offline"}
+                  {carregando ? "Salvando..." : "Salvar pedido"}
                 </button>
 
                 <button
