@@ -28,6 +28,7 @@ type Produto = {
   id: string;
   nome: string;
   preco: number;
+  preco_custo?: number;
   comissao_percentual: number;
 };
 
@@ -39,6 +40,10 @@ type ItemPedido = {
   valor_total: string;
   comissao_percentual: string;
   valor_comissao: string;
+  valor_custo_unitario: string;
+  valor_custo_total: string;
+  lucro_unitario: string;
+  lucro_total: string;
 };
 
 type PedidoForm = {
@@ -119,6 +124,14 @@ function dispositivoMovel() {
   return /iphone|ipad|ipod|android/i.test(navigator.userAgent);
 }
 
+function tipoGeraFinanceiroVenda(tipo?: string | null) {
+  return tipo === "Revenda" || tipo === "Venda direta";
+}
+
+function statusGeraFinanceiro(status?: string | null) {
+  return status !== "Orçamento" && status !== "Cancelado";
+}
+
 const pedidoInicial: PedidoForm = {
   cliente_id: "",
   numero: "",
@@ -126,7 +139,7 @@ const pedidoInicial: PedidoForm = {
   data_entrega_prevista: "",
   data_entrega_real: "",
   tipo: "Representação",
-  status: "Orçamento",
+  status: "Pedido",
   observacoes: "",
 };
 
@@ -138,6 +151,10 @@ const itemInicial: ItemPedido = {
   valor_total: "",
   comissao_percentual: "",
   valor_comissao: "",
+  valor_custo_unitario: "",
+  valor_custo_total: "",
+  lucro_unitario: "",
+  lucro_total: "",
 };
 
 export default function PedidosPage() {
@@ -232,7 +249,7 @@ export default function PedidosPage() {
 
         supabase
           .from("produtos")
-          .select("id, nome, preco, comissao_percentual")
+          .select("id, nome, preco, preco_custo, comissao_percentual")
           .order("nome"),
 
         supabase
@@ -349,15 +366,22 @@ export default function PedidosPage() {
     function recalcularItem(item: ItemPedido) {
     const quantidade = Number(item.quantidade || 0);
     const valorUnitario = Number(item.valor_unitario || 0);
+    const valorCustoUnitario = Number(item.valor_custo_unitario || 0);
     const comissao = Number(item.comissao_percentual || 0);
 
     const valorTotal = quantidade * valorUnitario;
+    const valorCustoTotal = quantidade * valorCustoUnitario;
     const valorComissao = valorTotal * (comissao / 100);
+    const lucroUnitario = valorUnitario - valorCustoUnitario;
+    const lucroTotal = valorTotal - valorCustoTotal;
 
     return {
       ...item,
       valor_total: String(valorTotal),
       valor_comissao: String(valorComissao),
+      valor_custo_total: String(valorCustoTotal),
+      lucro_unitario: String(lucroUnitario),
+      lucro_total: String(lucroTotal),
     };
   }
 
@@ -369,6 +393,7 @@ export default function PedidosPage() {
       produto_id: produtoId,
       produto_nome: produto?.nome || "",
       valor_unitario: String(produto?.preco || ""),
+      valor_custo_unitario: String(produto?.preco_custo || ""),
       comissao_percentual: String(produto?.comissao_percentual || ""),
     });
 
@@ -414,6 +439,20 @@ export default function PedidosPage() {
     );
   }, [itens]);
 
+  const valorCustoTotalPedido = useMemo(() => {
+    return itens.reduce(
+      (total, item) => total + Number(item.valor_custo_total || 0),
+      0
+    );
+  }, [itens]);
+
+  const lucroTotalPedido = useMemo(() => {
+    return itens.reduce(
+      (total, item) => total + Number(item.lucro_total || 0),
+      0
+    );
+  }, [itens]);
+
   const pedidosFiltrados = useMemo(() => {
     const texto = busca.toLowerCase();
 
@@ -442,6 +481,8 @@ export default function PedidosPage() {
       observacoes: form.observacoes,
       valor_total: valorTotalPedido,
       valor_comissao: valorTotalComissao,
+      valor_custo_total: valorCustoTotalPedido,
+      lucro_total: lucroTotalPedido,
     };
   }
 
@@ -454,6 +495,10 @@ export default function PedidosPage() {
       valor_total: Number(item.valor_total || 0),
       comissao_percentual: Number(item.comissao_percentual || 0),
       valor_comissao: Number(item.valor_comissao || 0),
+      valor_custo_unitario: Number(item.valor_custo_unitario || 0),
+      valor_custo_total: Number(item.valor_custo_total || 0),
+      lucro_unitario: Number(item.lucro_unitario || 0),
+      lucro_total: Number(item.lucro_total || 0),
     }));
   }
 
@@ -490,25 +535,60 @@ export default function PedidosPage() {
 
     limparFormulario();
   }
-
-  async function registrarFinanceiro(pedidoCriado: any) {
+    async function registrarFinanceiro(pedidoCriado: any) {
     if (!pedidoCriado?.id) return;
 
     const dataBase =
       form.data_entrega_prevista || form.data_pedido || hojeISO();
 
-    if (valorTotalPedido > 0) {
-      await supabase.from("contas_receber").insert({
-        pedido_id: pedidoCriado.id,
-        cliente_id: form.cliente_id,
-        descricao: `Pedido ${pedidoCriado.numero || form.numero}`,
-        valor: valorTotalPedido,
-        data_vencimento: dataBase,
-        status: "Em aberto",
-      });
+    await supabase
+      .from("contas_receber")
+      .delete()
+      .eq("pedido_id", pedidoCriado.id);
+
+    await supabase
+      .from("contas_pagar")
+      .delete()
+      .eq("pedido_id", pedidoCriado.id);
+
+    await supabase
+      .from("comissoes_financeiro")
+      .delete()
+      .eq("pedido_id", pedidoCriado.id);
+
+    if (!statusGeraFinanceiro(form.status)) {
+      return;
     }
 
-    if (valorTotalComissao > 0) {
+    if (tipoGeraFinanceiroVenda(form.tipo)) {
+      if (valorTotalPedido > 0) {
+        await supabase.from("contas_receber").insert({
+          pedido_id: pedidoCriado.id,
+          cliente_id: form.cliente_id,
+          descricao: `Recebimento do pedido ${pedidoCriado.numero || form.numero}`,
+          valor: valorTotalPedido,
+          data_vencimento: dataBase,
+          status: "Em aberto",
+        });
+      }
+
+      if (valorCustoTotalPedido > 0) {
+        await supabase.from("contas_pagar").insert({
+          pedido_id: pedidoCriado.id,
+          fornecedor_id: null,
+          descricao: `Custo de mercadoria do pedido ${
+            pedidoCriado.numero || form.numero
+          }`,
+          valor: valorCustoTotalPedido,
+          data_vencimento: dataBase,
+          status: "Em aberto",
+        });
+      }
+
+      return;
+    }
+
+    if (form.tipo === "Representação" && valorTotalComissao > 0) {
       await supabase.from("comissoes_financeiro").insert({
         pedido_id: pedidoCriado.id,
         cliente_id: form.cliente_id,
@@ -520,15 +600,14 @@ export default function PedidosPage() {
       });
     }
   }
-    async function salvarPedido() {
+
+  async function salvarPedido() {
     if (carregando) return;
 
     if (!form.cliente_id) return alert("Selecione o cliente.");
     if (itens.length === 0) return alert("Adicione ao menos um produto.");
     if (!form.data_pedido) return alert("Informe a data do pedido.");
 
-    // No celular, o pedido é salvo primeiro no aparelho.
-    // Isso evita travamento no iPhone/Safari quando a requisição ao Supabase demora.
     if (dispositivoMovel()) {
       setCarregando(true);
 
@@ -639,6 +718,9 @@ export default function PedidosPage() {
     if (!confirm("Deseja excluir este pedido?")) return;
 
     await supabase.from("pedido_itens").delete().eq("pedido_id", id);
+    await supabase.from("contas_receber").delete().eq("pedido_id", id);
+    await supabase.from("contas_pagar").delete().eq("pedido_id", id);
+    await supabase.from("comissoes_financeiro").delete().eq("pedido_id", id);
 
     const { error } = await supabase.from("pedidos").delete().eq("id", id);
 
@@ -646,8 +728,7 @@ export default function PedidosPage() {
 
     carregarDados();
   }
-
-  return (
+    return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
@@ -703,7 +784,8 @@ export default function PedidosPage() {
               <Card titulo="Produtos cache" valor={produtos.length} />
               <Card titulo="Offline" valor={pendentesOffline} />
             </div>
-                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">
@@ -743,8 +825,8 @@ export default function PedidosPage() {
                     Novo pedido
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    No computador salva online. No celular salva primeiro
-                    offline para evitar travamento.
+                    Revenda e Venda direta geram contas a receber e a pagar
+                    automaticamente quando o status não for Orçamento.
                   </p>
                 </div>
 
@@ -849,8 +931,7 @@ export default function PedidosPage() {
                 />
               </div>
             </section>
-
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-5 text-xl font-bold text-slate-800">
                 Produtos do pedido
               </h3>
@@ -915,6 +996,8 @@ export default function PedidosPage() {
                       <th className="px-4 py-3">Qtd</th>
                       <th className="px-4 py-3">Unitário</th>
                       <th className="px-4 py-3">Total</th>
+                      <th className="px-4 py-3">Custo</th>
+                      <th className="px-4 py-3">Lucro</th>
                       <th className="px-4 py-3">Comissão</th>
                       <th className="px-4 py-3">Ações</th>
                     </tr>
@@ -933,6 +1016,12 @@ export default function PedidosPage() {
                         <td className="px-4 py-4">
                           {formatarMoeda(item.valor_total)}
                         </td>
+                        <td className="px-4 py-4">
+                          {formatarMoeda(item.valor_custo_total)}
+                        </td>
+                        <td className="px-4 py-4 text-blue-700">
+                          {formatarMoeda(item.lucro_total)}
+                        </td>
                         <td className="px-4 py-4 text-green-700">
                           {formatarMoeda(item.valor_comissao)}
                         </td>
@@ -950,7 +1039,7 @@ export default function PedidosPage() {
                     {itens.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={8}
                           className="px-4 py-8 text-center text-slate-500"
                         >
                           Nenhum produto adicionado.
@@ -961,11 +1050,25 @@ export default function PedidosPage() {
                 </table>
               </div>
 
-              <div className="mt-5 flex flex-col gap-4 border-t pt-5 md:flex-row md:items-center md:justify-between">
+              <div className="mt-5 grid grid-cols-1 gap-4 border-t pt-5 md:grid-cols-4">
                 <div>
                   <p className="text-sm text-slate-500">Total do pedido</p>
                   <strong className="text-2xl text-slate-900">
                     {formatarMoeda(valorTotalPedido)}
+                  </strong>
+                </div>
+
+                <div>
+                  <p className="text-sm text-slate-500">Custo total</p>
+                  <strong className="text-2xl text-red-700">
+                    {formatarMoeda(valorCustoTotalPedido)}
+                  </strong>
+                </div>
+
+                <div>
+                  <p className="text-sm text-slate-500">Lucro previsto</p>
+                  <strong className="text-2xl text-blue-700">
+                    {formatarMoeda(lucroTotalPedido)}
                   </strong>
                 </div>
 
@@ -975,29 +1078,29 @@ export default function PedidosPage() {
                     {formatarMoeda(valorTotalComissao)}
                   </strong>
                 </div>
+              </div>
 
-                <div className="flex flex-col gap-3 md:flex-row">
-                  <button
-                    onClick={salvarPedido}
-                    disabled={carregando}
-                    className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-                  >
-                    {carregando
-                      ? "Salvando..."
-                      : dispositivoMovel()
-                      ? "Salvar no celular"
-                      : online
-                      ? "Salvar pedido"
-                      : "Salvar offline"}
-                  </button>
+              <div className="mt-5 flex flex-col gap-3 md:flex-row md:justify-end">
+                <button
+                  onClick={salvarPedido}
+                  disabled={carregando}
+                  className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                >
+                  {carregando
+                    ? "Salvando..."
+                    : dispositivoMovel()
+                    ? "Salvar no celular"
+                    : online
+                    ? "Salvar pedido"
+                    : "Salvar offline"}
+                </button>
 
-                  <button
-                    onClick={limparFormulario}
-                    className="rounded-xl border border-slate-300 px-6 py-3 font-semibold"
-                  >
-                    Limpar
-                  </button>
-                </div>
+                <button
+                  onClick={limparFormulario}
+                  className="rounded-xl border border-slate-300 px-6 py-3 font-semibold"
+                >
+                  Limpar
+                </button>
               </div>
             </section>
 
@@ -1045,6 +1148,17 @@ export default function PedidosPage() {
                           {formatarMoeda(pedido.valor_total)}
                         </p>
 
+                        {tipoGeraFinanceiroVenda(pedido.tipo) && (
+                          <>
+                            <p className="text-sm font-semibold text-red-700">
+                              Custo: {formatarMoeda(pedido.valor_custo_total)}
+                            </p>
+                            <p className="text-sm font-semibold text-blue-700">
+                              Lucro: {formatarMoeda(pedido.lucro_total)}
+                            </p>
+                          </>
+                        )}
+
                         <p className="text-sm font-semibold text-green-700">
                           Comissão: {formatarMoeda(pedido.valor_comissao)}
                         </p>
@@ -1087,7 +1201,7 @@ export default function PedidosPage() {
   );
 }
 
-function Card({ titulo, valor }: { titulo: string | number; valor: string | number }) {
+function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm">
       <p className="text-sm text-slate-500">{titulo}</p>

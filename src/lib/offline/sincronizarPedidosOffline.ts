@@ -15,6 +15,14 @@ function numeroEhOffline(numero?: string | null) {
   return String(numero || "").startsWith("OFF-");
 }
 
+function tipoGeraFinanceiroVenda(tipo?: string | null) {
+  return tipo === "Revenda" || tipo === "Venda direta";
+}
+
+function statusGeraFinanceiro(status?: string | null) {
+  return status !== "Orçamento" && status !== "Cancelado";
+}
+
 async function gerarProximoNumeroPedido() {
   const { data, error } = await supabase
     .from("pedidos")
@@ -23,9 +31,7 @@ async function gerarProximoNumeroPedido() {
     .order("numero", { ascending: false })
     .limit(1);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
   const ultimoNumero = data?.[0]?.numero || "PED-000000";
   const somenteNumero = Number(String(ultimoNumero).replace("PED-", "")) || 0;
@@ -73,7 +79,25 @@ async function recriarItensPedido(pedidoId: string, itens: any[]) {
   if (error) throw error;
 }
 
-async function recriarFinanceiro(pedidoCriado: any, pedido: any) {
+function agruparCustoPorFornecedor(itens: any[]) {
+  const mapa = new Map<string, { fornecedor_id: string | null; valor: number }>();
+
+  for (const item of itens || []) {
+    const fornecedorId = item.fornecedor_id || null;
+    const chave = fornecedorId || "sem-fornecedor";
+    const valorAtual = mapa.get(chave)?.valor || 0;
+    const valorItem = Number(item.valor_custo_total || 0);
+
+    mapa.set(chave, {
+      fornecedor_id: fornecedorId,
+      valor: valorAtual + valorItem,
+    });
+  }
+
+  return Array.from(mapa.values()).filter((grupo) => grupo.valor > 0);
+}
+
+async function recriarFinanceiro(pedidoCriado: any, pedido: any, itens: any[]) {
   const dataBase =
     pedido.data_entrega_prevista || pedido.data_pedido || hojeISO();
 
@@ -83,31 +107,61 @@ async function recriarFinanceiro(pedidoCriado: any, pedido: any) {
     .eq("pedido_id", pedidoCriado.id);
 
   await supabase
+    .from("contas_pagar")
+    .delete()
+    .eq("pedido_id", pedidoCriado.id);
+
+  await supabase
     .from("comissoes_financeiro")
     .delete()
     .eq("pedido_id", pedidoCriado.id);
 
-  if (Number(pedido.valor_total || 0) > 0) {
-    await supabase.from("contas_receber").insert({
-      pedido_id: pedidoCriado.id,
-      cliente_id: pedido.cliente_id,
-      descricao: `Pedido ${pedidoCriado.numero || pedido.numero}`,
-      valor: Number(pedido.valor_total || 0),
-      data_vencimento: dataBase,
-      status: "Em aberto",
-    });
+  if (!statusGeraFinanceiro(pedido.status)) {
+    return;
   }
 
-  if (Number(pedido.valor_comissao || 0) > 0) {
-    await supabase.from("comissoes_financeiro").insert({
-      pedido_id: pedidoCriado.id,
-      cliente_id: pedido.cliente_id,
-      empresa: pedido.tipo || "Representação",
-      valor_base: Number(pedido.valor_total || 0),
-      valor_comissao: Number(pedido.valor_comissao || 0),
-      data_previsao: dataBase,
-      status: "Pendente",
-    });
+  if (tipoGeraFinanceiroVenda(pedido.tipo)) {
+    if (Number(pedido.valor_total || 0) > 0) {
+      await supabase.from("contas_receber").insert({
+        pedido_id: pedidoCriado.id,
+        cliente_id: pedido.cliente_id,
+        descricao: `Recebimento do pedido ${pedidoCriado.numero || pedido.numero}`,
+        valor: Number(pedido.valor_total || 0),
+        data_vencimento: dataBase,
+        status: "Em aberto",
+      });
+    }
+
+    const custosPorFornecedor = agruparCustoPorFornecedor(itens);
+
+    for (const grupo of custosPorFornecedor) {
+      await supabase.from("contas_pagar").insert({
+        pedido_id: pedidoCriado.id,
+        fornecedor_id: grupo.fornecedor_id,
+        descricao: `Custo de mercadoria do pedido ${
+          pedidoCriado.numero || pedido.numero
+        }`,
+        valor: Number(grupo.valor || 0),
+        data_vencimento: dataBase,
+        status: "Em aberto",
+      });
+    }
+
+    return;
+  }
+
+  if (pedido.tipo === "Representação") {
+    if (Number(pedido.valor_comissao || 0) > 0) {
+      await supabase.from("comissoes_financeiro").insert({
+        pedido_id: pedidoCriado.id,
+        cliente_id: pedido.cliente_id,
+        empresa: pedido.tipo || "Representação",
+        valor_base: Number(pedido.valor_total || 0),
+        valor_comissao: Number(pedido.valor_comissao || 0),
+        data_previsao: dataBase,
+        status: "Pendente",
+      });
+    }
   }
 }
 
@@ -202,10 +256,14 @@ export async function sincronizarPedidosOffline() {
       await recriarItensPedido(pedidoCriado.id, item.itens || []);
 
       try {
-        await recriarFinanceiro(pedidoCriado, {
-          ...pedidoPayload,
-          numero: pedidoCriado.numero || pedidoPayload.numero,
-        });
+        await recriarFinanceiro(
+          pedidoCriado,
+          {
+            ...pedidoPayload,
+            numero: pedidoCriado.numero || pedidoPayload.numero,
+          },
+          item.itens || []
+        );
       } catch (financeiroError) {
         console.warn(
           "Pedido sincronizado, mas houve falha ao recriar financeiro:",

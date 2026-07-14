@@ -7,6 +7,8 @@ export type ProdutoOffline = {
   id: string;
   nome: string;
   preco: number;
+  preco_custo?: number;
+  fornecedor_id?: string | null;
   comissao_percentual: number;
 };
 
