@@ -12,11 +12,25 @@ function moeda(valor: number) {
   });
 }
 
+function dataTexto(valor?: string | null) {
+  if (!valor) return "-";
+  return String(valor);
+}
+
+type BoletoEdicao = {
+  numero_boleto: string;
+  data_boleto: string;
+};
+
 export default function FinanceiroPage() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [receber, setReceber] = useState<any[]>([]);
   const [pagar, setPagar] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
+  const [boletoEdicao, setBoletoEdicao] = useState<Record<string, BoletoEdicao>>(
+    {}
+  );
+  const [salvandoBoletoId, setSalvandoBoletoId] = useState<string | null>(null);
 
   async function carregarDados() {
     const pedidosResp = await supabase
@@ -53,7 +67,7 @@ export default function FinanceiroPage() {
       .eq("id", id);
 
     if (error) return alert(error.message);
-    carregarDados();
+    await carregarDados();
   }
 
   async function marcarPago(id: string) {
@@ -66,7 +80,58 @@ export default function FinanceiroPage() {
       .eq("id", id);
 
     if (error) return alert(error.message);
-    carregarDados();
+    await carregarDados();
+  }
+
+  function valoresBoleto(item: any): BoletoEdicao {
+    return {
+      numero_boleto:
+        boletoEdicao[item.id]?.numero_boleto ?? item.numero_boleto ?? "",
+      data_boleto: boletoEdicao[item.id]?.data_boleto ?? item.data_boleto ?? "",
+    };
+  }
+
+  function atualizarBoleto(
+    item: any,
+    campo: keyof BoletoEdicao,
+    valor: string
+  ) {
+    setBoletoEdicao((atual) => ({
+      ...atual,
+      [item.id]: {
+        numero_boleto:
+          atual[item.id]?.numero_boleto ?? item.numero_boleto ?? "",
+        data_boleto: atual[item.id]?.data_boleto ?? item.data_boleto ?? "",
+        [campo]: valor,
+      },
+    }));
+  }
+
+  async function salvarBoleto(item: any) {
+    const valores = valoresBoleto(item);
+
+    setSalvandoBoletoId(item.id);
+
+    const { error } = await supabase
+      .from("contas_receber")
+      .update({
+        numero_boleto: valores.numero_boleto || null,
+        data_boleto: valores.data_boleto || null,
+      })
+      .eq("id", item.id);
+
+    setSalvandoBoletoId(null);
+
+    if (error) return alert(error.message);
+
+    setBoletoEdicao((atual) => {
+      const copia = { ...atual };
+      delete copia[item.id];
+      return copia;
+    });
+
+    await carregarDados();
+    alert("Dados do boleto salvos com sucesso.");
   }
 
   useEffect(() => {
@@ -108,7 +173,12 @@ export default function FinanceiroPage() {
     const texto = busca.toLowerCase();
 
     return receber.filter((item) =>
-      [item.descricao, item.status, item.clientes?.razao_social]
+      [
+        item.descricao,
+        item.status,
+        item.clientes?.razao_social,
+        item.numero_boleto,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(texto)
@@ -147,16 +217,16 @@ export default function FinanceiroPage() {
             </div>
 
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
-              <div className="mb-5 flex items-center justify-between">
+              <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <h3 className="text-xl font-bold text-slate-800">
                   Contas a receber
                 </h3>
 
                 <input
-                  placeholder="Pesquisar financeiro..."
+                  placeholder="Pesquisar financeiro ou boleto..."
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
-                  className="w-80 rounded-xl border px-4 py-3"
+                  className="w-full rounded-xl border px-4 py-3 md:w-80"
                 />
               </div>
 
@@ -168,39 +238,97 @@ export default function FinanceiroPage() {
                       <th className="px-4 py-3">Cliente</th>
                       <th className="px-4 py-3">Valor</th>
                       <th className="px-4 py-3">Vencimento</th>
+                      <th className="px-4 py-3">Nº boleto</th>
+                      <th className="px-4 py-3">Data boleto</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Ações</th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {receberFiltrado.map((item) => (
-                      <tr key={item.id}>
-                        <td className="px-4 py-4 font-semibold">
-                          {item.descricao || "-"}
-                        </td>
-                        <td className="px-4 py-4">
-                          {item.clientes?.razao_social || "-"}
-                        </td>
-                        <td className="px-4 py-4">{moeda(item.valor)}</td>
-                        <td className="px-4 py-4">{item.vencimento || "-"}</td>
-                        <td className="px-4 py-4">{item.status}</td>
-                        <td className="px-4 py-4">
-                          {item.status !== "Recebido" && (
-                            <button
-                              onClick={() => marcarRecebido(item.id)}
-                              className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
-                            >
-                              Receber
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {receberFiltrado.map((item) => {
+                      const boleto = valoresBoleto(item);
+
+                      return (
+                        <tr key={item.id}>
+                          <td className="px-4 py-4 font-semibold">
+                            {item.descricao || "-"}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            {item.clientes?.razao_social || "-"}
+                          </td>
+
+                          <td className="px-4 py-4">{moeda(item.valor)}</td>
+
+                          <td className="px-4 py-4">
+                            {dataTexto(item.vencimento || item.data_vencimento)}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <input
+                              placeholder="Nº boleto"
+                              value={boleto.numero_boleto}
+                              onChange={(e) =>
+                                atualizarBoleto(
+                                  item,
+                                  "numero_boleto",
+                                  e.target.value
+                                )
+                              }
+                              className="w-36 rounded-lg border border-slate-300 px-3 py-2"
+                            />
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <input
+                              type="date"
+                              value={boleto.data_boleto}
+                              onChange={(e) =>
+                                atualizarBoleto(
+                                  item,
+                                  "data_boleto",
+                                  e.target.value
+                                )
+                              }
+                              className="w-40 rounded-lg border border-slate-300 px-3 py-2"
+                            />
+                          </td>
+
+                          <td className="px-4 py-4">{item.status}</td>
+
+                          <td className="px-4 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => salvarBoleto(item)}
+                                disabled={salvandoBoletoId === item.id}
+                                className="rounded-lg bg-slate-100 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60"
+                              >
+                                {salvandoBoletoId === item.id
+                                  ? "Salvando..."
+                                  : "Salvar boleto"}
+                              </button>
+
+                              {item.status !== "Recebido" && (
+                                <button
+                                  onClick={() => marcarRecebido(item.id)}
+                                  className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
+                                >
+                                  Receber
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
 
                     {receberFiltrado.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                        <td
+                          colSpan={8}
+                          className="px-4 py-8 text-center text-slate-500"
+                        >
                           Nenhuma conta a receber cadastrada.
                         </td>
                       </tr>
@@ -238,7 +366,9 @@ export default function FinanceiroPage() {
                         <td className="px-4 py-4">{item.categoria || "-"}</td>
                         <td className="px-4 py-4">{item.fornecedor || "-"}</td>
                         <td className="px-4 py-4">{moeda(item.valor)}</td>
-                        <td className="px-4 py-4">{item.vencimento || "-"}</td>
+                        <td className="px-4 py-4">
+                          {dataTexto(item.vencimento || item.data_vencimento)}
+                        </td>
                         <td className="px-4 py-4">{item.status}</td>
                         <td className="px-4 py-4">
                           {item.status !== "Pago" && (
@@ -255,7 +385,10 @@ export default function FinanceiroPage() {
 
                     {pagarFiltrado.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                        <td
+                          colSpan={7}
+                          className="px-4 py-8 text-center text-slate-500"
+                        >
                           Nenhuma conta a pagar cadastrada.
                         </td>
                       </tr>
