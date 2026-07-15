@@ -9,6 +9,7 @@ import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 type Cliente = {
   id: string;
   razao_social: string;
+  condicao_pagamento_padrao?: string | null;
 };
 
 type Produto = {
@@ -47,6 +48,7 @@ type PedidoForm = {
   data_entrega_real: string;
   tipo: string;
   status: string;
+  condicao_pagamento: string;
   observacoes: string;
 };
 
@@ -127,6 +129,7 @@ const pedidoInicial: PedidoForm = {
   data_entrega_real: "",
   tipo: "Representação",
   status: "Pedido",
+  condicao_pagamento: "A combinar",
   observacoes: "",
 };
 
@@ -198,7 +201,7 @@ export default function PedidosPage() {
       const [clientesResp, produtosResp, pedidosResp] = await Promise.all([
         supabase
           .from("clientes")
-          .select("id, razao_social")
+          .select("id, razao_social, condicao_pagamento_padrao")
           .order("razao_social"),
 
         supabase
@@ -296,6 +299,19 @@ export default function PedidosPage() {
     };
   }
 
+  function selecionarCliente(clienteId: string) {
+    const cliente = clientes.find((item) => item.id === clienteId);
+
+    setForm((atual) => ({
+      ...atual,
+      cliente_id: clienteId,
+      condicao_pagamento:
+        cliente?.condicao_pagamento_padrao ||
+        atual.condicao_pagamento ||
+        "A combinar",
+    }));
+  }
+
   function selecionarProduto(produtoId: string) {
     const produto = produtos.find((p) => p.id === produtoId);
 
@@ -374,6 +390,7 @@ export default function PedidosPage() {
         pedido.clientes?.razao_social,
         pedido.status,
         pedido.tipo,
+        pedido.condicao_pagamento,
       ]
         .join(" ")
         .toLowerCase()
@@ -390,6 +407,7 @@ export default function PedidosPage() {
       data_entrega_real: form.data_entrega_real || null,
       tipo: form.tipo,
       status: form.status,
+      condicao_pagamento: form.condicao_pagamento || "A combinar",
       observacoes: form.observacoes,
       valor_total: valorTotalPedido,
       valor_comissao: valorTotalComissao,
@@ -697,9 +715,7 @@ O sistema desfez o pedido incompleto.`
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <select
                   value={form.cliente_id}
-                  onChange={(e) =>
-                    setForm({ ...form, cliente_id: e.target.value })
-                  }
+                  onChange={(e) => selecionarCliente(e.target.value)}
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 >
                   <option value="">Selecione o cliente</option>
@@ -777,6 +793,15 @@ O sistema desfez o pedido incompleto.`
                   }
                   className="rounded-xl border border-slate-200 px-4 py-3"
                   title="Entrega real"
+                />
+
+                <input
+                  placeholder="Condição de pagamento. Ex: Boleto 30/45/60 dias"
+                  value={form.condicao_pagamento}
+                  onChange={(e) =>
+                    setForm({ ...form, condicao_pagamento: e.target.value })
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
                 />
 
                 <textarea
@@ -995,6 +1020,10 @@ O sistema desfez o pedido incompleto.`
 
                         <p className="text-sm text-slate-500">
                           Tipo: {pedido.tipo || "-"}
+                        </p>
+
+                        <p className="text-sm text-slate-500">
+                          Condição: {pedido.condicao_pagamento || "A combinar"}
                         </p>
 
                         <p className="mt-2 text-lg font-bold text-blue-700">

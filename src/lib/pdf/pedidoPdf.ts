@@ -154,11 +154,11 @@ export async function gerarPedidoPDF(pedido: any) {
   doc.text("Desconto:", 121, 111);
   doc.text(moeda(0), 174, 111);
 
-  doc.text("Frete:", 121, 121);
-  doc.text(moeda(0), 174, 121);
+  doc.text("Pagamento:", 121, 121);
+  doc.text(texto(pedido.condicao_pagamento), 151, 121, { maxWidth: 42 });
 
   doc.text("Tipo:", 121, 131);
-  doc.text(texto(pedido.tipo_operacao), 174, 131);
+  doc.text(texto(pedido.tipo_operacao || pedido.tipo), 174, 131);
 
   doc.setFillColor(0, 63, 135);
   doc.roundedRect(116, 137, 80, 13, 2, 2, "F");
