@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -18,6 +17,10 @@ type Produto = {
   preco: number;
   preco_custo?: number;
   fornecedor_id?: string | null;
+  fornecedor_nome?: string | null;
+  fornecedores?: {
+    nome?: string | null;
+  } | null;
   comissao_percentual: number;
 };
 
@@ -154,7 +157,8 @@ export default function PedidosPage() {
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [carregandoDados, setCarregandoDados] = useState(true);
-    async function gerarProximoNumeroPedido() {
+
+  async function gerarProximoNumeroPedido() {
     const { data, error } = await supabase
       .from("pedidos")
       .select("numero")
@@ -199,7 +203,9 @@ export default function PedidosPage() {
 
         supabase
           .from("produtos")
-          .select("id, nome, preco, preco_custo, fornecedor_id, comissao_percentual")
+          .select(
+            "id, nome, preco, preco_custo, fornecedor_id, comissao_percentual, fornecedores(nome)"
+          )
           .order("nome"),
 
         supabase
@@ -230,8 +236,15 @@ export default function PedidosPage() {
       if (produtosResp.error) throw produtosResp.error;
       if (pedidosResp.error) throw pedidosResp.error;
 
+      const produtosComFornecedor = (produtosResp.data || []).map(
+        (produto: any) => ({
+          ...produto,
+          fornecedor_nome: produto?.fornecedores?.nome || null,
+        })
+      );
+
       setClientes(clientesResp.data || []);
-      setProdutos(produtosResp.data || []);
+      setProdutos(produtosComFornecedor);
       setPedidos(pedidosResp.data || []);
 
       if (!form.numero) {
@@ -307,7 +320,8 @@ export default function PedidosPage() {
 
     setItemAtual(novoItem);
   }
-    function adicionarItem() {
+
+  function adicionarItem() {
     if (!itemAtual.produto_id) return alert("Selecione um produto.");
     if (!itemAtual.quantidade) return alert("Informe a quantidade.");
 
@@ -419,24 +433,41 @@ export default function PedidosPage() {
   function agruparCustoPorFornecedor(itensFinanceiro: any[]) {
     const mapa = new Map<
       string,
-      { fornecedor_id: string | null; valor: number }
+      { fornecedor_id: string | null; fornecedor_nome: string; valor: number }
     >();
 
     for (const item of itensFinanceiro || []) {
-      const fornecedorId = item.fornecedor_id || null;
-      const chave = fornecedorId || "sem-fornecedor";
+      const produto = produtos.find((p) => p.id === item.produto_id);
+
+      const fornecedorId = item.fornecedor_id || produto?.fornecedor_id || null;
+      const fornecedorNome =
+        produto?.fornecedor_nome ||
+        produto?.fornecedores?.nome ||
+        (fornecedorId ? "Fornecedor vinculado" : "Compra própria");
+
+      const chave = fornecedorId || fornecedorNome || "sem-fornecedor";
       const valorAtual = mapa.get(chave)?.valor || 0;
       const valorItem = Number(item.valor_custo_total || 0);
 
       mapa.set(chave, {
         fornecedor_id: fornecedorId,
+        fornecedor_nome: fornecedorNome,
         valor: valorAtual + valorItem,
       });
     }
 
     return Array.from(mapa.values()).filter((grupo) => grupo.valor > 0);
   }
-    async function registrarFinanceiro(pedidoCriado: any, itensFinanceiro: any[]) {
+
+  async function desfazerPedidoCriado(pedidoId: string) {
+    await supabase.from("pedido_itens").delete().eq("pedido_id", pedidoId);
+    await supabase.from("contas_receber").delete().eq("pedido_id", pedidoId);
+    await supabase.from("contas_pagar").delete().eq("pedido_id", pedidoId);
+    await supabase.from("comissoes_financeiro").delete().eq("pedido_id", pedidoId);
+    await supabase.from("pedidos").delete().eq("id", pedidoId);
+  }
+
+  async function registrarFinanceiro(pedidoCriado: any, itensFinanceiro: any[]) {
     if (!pedidoCriado?.id) return;
 
     const dataBase =
@@ -469,6 +500,7 @@ export default function PedidosPage() {
           descricao: `Recebimento do pedido ${pedidoCriado.numero || form.numero}`,
           valor: valorTotalPedido,
           data_vencimento: dataBase,
+          vencimento: dataBase,
           status: "Pendente",
         });
 
@@ -481,11 +513,14 @@ export default function PedidosPage() {
         const { error } = await supabase.from("contas_pagar").insert({
           pedido_id: pedidoCriado.id,
           fornecedor_id: grupo.fornecedor_id,
+          categoria: "Mercadoria",
+          fornecedor: grupo.fornecedor_nome || "Compra própria",
           descricao: `Custo de mercadoria do pedido ${
             pedidoCriado.numero || form.numero
           }`,
           valor: Number(grupo.valor || 0),
           data_vencimento: dataBase,
+          vencimento: dataBase,
           status: "Pendente",
         });
 
@@ -571,8 +606,14 @@ export default function PedidosPage() {
       console.error("Erro ao salvar pedido:", error);
 
       if (pedidoCriadoOnline?.id) {
+        await desfazerPedidoCriado(pedidoCriadoOnline.id);
+
         alert(
-          "O pedido principal foi criado, mas houve erro em alguma etapa financeira ou nos itens. Verifique em Consulta de Pedidos antes de repetir."
+          `O pedido NÃO foi salvo porque houve erro nos itens ou no financeiro.
+
+Erro real: ${error?.message || JSON.stringify(error)}
+
+O sistema desfez o pedido incompleto.`
         );
 
         await carregarDados();
@@ -595,18 +636,15 @@ export default function PedidosPage() {
   async function excluirPedido(id: string) {
     if (!confirm("Deseja excluir este pedido?")) return;
 
-    await supabase.from("pedido_itens").delete().eq("pedido_id", id);
-    await supabase.from("contas_receber").delete().eq("pedido_id", id);
-    await supabase.from("contas_pagar").delete().eq("pedido_id", id);
-    await supabase.from("comissoes_financeiro").delete().eq("pedido_id", id);
-
-    const { error } = await supabase.from("pedidos").delete().eq("id", id);
-
-    if (error) return alert(error.message);
-
-    carregarDados();
+    try {
+      await desfazerPedidoCriado(id);
+      await carregarDados();
+    } catch (error: any) {
+      alert(error?.message || "Erro ao excluir pedido.");
+    }
   }
-    return (
+
+  return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
@@ -751,7 +789,8 @@ export default function PedidosPage() {
                 />
               </div>
             </section>
-                        <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-5 text-xl font-bold text-slate-800">
                 Produtos do pedido
               </h3>
