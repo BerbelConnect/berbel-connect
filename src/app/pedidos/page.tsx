@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
+import { gerarPlanoPagamento } from "@/lib/pedidos/condicaoPagamento";
+import { criarPedidoCompleto } from "@/lib/pedidos/criarPedidoCompleto";
 
 type Cliente = {
   id: string;
@@ -111,10 +113,6 @@ function tipoGeraFinanceiroVenda(tipo?: string | null) {
   );
 }
 
-function tipoRepresentacao(tipo?: string | null) {
-  return normalizarTexto(tipo) === "representacao";
-}
-
 function statusGeraFinanceiro(status?: string | null) {
   const statusNormalizado = normalizarTexto(status);
 
@@ -160,39 +158,7 @@ export default function PedidosPage() {
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [carregandoDados, setCarregandoDados] = useState(true);
-
-  async function gerarProximoNumeroPedido() {
-    const { data, error } = await supabase
-      .from("pedidos")
-      .select("numero")
-      .like("numero", "PED-%")
-      .order("numero", { ascending: false })
-      .limit(1);
-
-    if (error) {
-      throw error;
-    }
-
-    const ultimoNumero = data?.[0]?.numero || "PED-000000";
-    const somenteNumero =
-      Number(String(ultimoNumero).replace("PED-", "")) || 0;
-    const proximo = String(somenteNumero + 1).padStart(6, "0");
-
-    return `PED-${proximo}`;
-  }
-
-  async function gerarNovoNumero() {
-    try {
-      const novoNumero = await gerarProximoNumeroPedido();
-
-      setForm((atual) => ({
-        ...atual,
-        numero: novoNumero,
-      }));
-    } catch (error: any) {
-      alert(error?.message || "Erro ao gerar número do pedido.");
-    }
-  }
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   async function carregarDados() {
     setCarregandoDados(true);
@@ -250,14 +216,6 @@ export default function PedidosPage() {
       setProdutos(produtosComFornecedor);
       setPedidos(pedidosResp.data || []);
 
-      if (!form.numero) {
-        const novoNumero = await gerarProximoNumeroPedido();
-
-        setForm((atual) => ({
-          ...atual,
-          numero: atual.numero || novoNumero,
-        }));
-      }
     } catch (error: any) {
       console.error("Erro ao carregar dados:", error);
 
@@ -381,6 +339,22 @@ export default function PedidosPage() {
     );
   }, [itens]);
 
+  const planoPagamento = useMemo(() => {
+    const dataBase =
+      form.data_entrega_prevista || form.data_pedido || hojeISO();
+
+    return gerarPlanoPagamento(
+      valorTotalPedido,
+      dataBase,
+      form.condicao_pagamento
+    );
+  }, [
+    form.condicao_pagamento,
+    form.data_entrega_prevista,
+    form.data_pedido,
+    valorTotalPedido,
+  ]);
+
   const pedidosFiltrados = useMemo(() => {
     const texto = busca.toLowerCase();
 
@@ -398,10 +372,9 @@ export default function PedidosPage() {
     );
   }, [pedidos, busca]);
 
-  function montarPedidoPayload(numeroFinal: string) {
+  function montarPedidoPayload() {
     return {
       cliente_id: form.cliente_id,
-      numero: numeroFinal,
       data_pedido: form.data_pedido,
       data_entrega_prevista: form.data_entrega_prevista || null,
       data_entrega_real: form.data_entrega_real || null,
@@ -442,10 +415,7 @@ export default function PedidosPage() {
 
     setItens([]);
     setItemAtual(itemInicial);
-
-    setTimeout(() => {
-      gerarNovoNumero();
-    }, 200);
+    idempotencyKeyRef.current = null;
   }
 
   function agruparCustoPorFornecedor(itensFinanceiro: any[]) {
@@ -485,84 +455,6 @@ export default function PedidosPage() {
     await supabase.from("pedidos").delete().eq("id", pedidoId);
   }
 
-  async function registrarFinanceiro(pedidoCriado: any, itensFinanceiro: any[]) {
-    if (!pedidoCriado?.id) return;
-
-    const dataBase =
-      form.data_entrega_prevista || form.data_pedido || hojeISO();
-
-    await supabase
-      .from("contas_receber")
-      .delete()
-      .eq("pedido_id", pedidoCriado.id);
-
-    await supabase
-      .from("contas_pagar")
-      .delete()
-      .eq("pedido_id", pedidoCriado.id);
-
-    await supabase
-      .from("comissoes_financeiro")
-      .delete()
-      .eq("pedido_id", pedidoCriado.id);
-
-    if (!statusGeraFinanceiro(form.status)) {
-      return;
-    }
-
-    if (tipoGeraFinanceiroVenda(form.tipo)) {
-      if (valorTotalPedido > 0) {
-        const { error } = await supabase.from("contas_receber").insert({
-          pedido_id: pedidoCriado.id,
-          cliente_id: form.cliente_id,
-          descricao: `Recebimento do pedido ${pedidoCriado.numero || form.numero}`,
-          valor: valorTotalPedido,
-          data_vencimento: dataBase,
-          vencimento: dataBase,
-          status: "Pendente",
-        });
-
-        if (error) throw error;
-      }
-
-      const custosPorFornecedor = agruparCustoPorFornecedor(itensFinanceiro);
-
-      for (const grupo of custosPorFornecedor) {
-        const { error } = await supabase.from("contas_pagar").insert({
-          pedido_id: pedidoCriado.id,
-          fornecedor_id: grupo.fornecedor_id,
-          categoria: "Mercadoria",
-          fornecedor: grupo.fornecedor_nome || "Compra própria",
-          descricao: `Custo de mercadoria do pedido ${
-            pedidoCriado.numero || form.numero
-          }`,
-          valor: Number(grupo.valor || 0),
-          data_vencimento: dataBase,
-          vencimento: dataBase,
-          status: "Pendente",
-        });
-
-        if (error) throw error;
-      }
-
-      return;
-    }
-
-    if (tipoRepresentacao(form.tipo) && valorTotalComissao > 0) {
-      const { error } = await supabase.from("comissoes_financeiro").insert({
-        pedido_id: pedidoCriado.id,
-        cliente_id: form.cliente_id,
-        empresa: form.tipo,
-        valor_base: valorTotalPedido,
-        valor_comissao: valorTotalComissao,
-        data_previsao: dataBase,
-        status: "Pendente",
-      });
-
-      if (error) throw error;
-    }
-  }
-
   async function salvarPedido() {
     if (carregando) return;
 
@@ -578,65 +470,40 @@ export default function PedidosPage() {
 
     setCarregando(true);
 
-    let pedidoCriadoOnline: any = null;
-
     try {
-      const numeroFinal =
-        !form.numero || form.numero.startsWith("OFF-")
-          ? await gerarProximoNumeroPedido()
-          : form.numero;
+      idempotencyKeyRef.current ||= globalThis.crypto.randomUUID();
 
-      const pedidoPayload = montarPedidoPayload(numeroFinal);
+      const pedidoPayload = montarPedidoPayload();
       const itensPayload = montarItensPayload();
+      const geraFinanceiro = statusGeraFinanceiro(form.status);
+      const venda = tipoGeraFinanceiroVenda(form.tipo);
+      const contasReceber = geraFinanceiro && venda
+        ? planoPagamento.parcelas.map((parcela) => ({
+            numero: parcela.numero,
+            total_parcelas: parcela.totalParcelas,
+            prazo_dias: parcela.prazoDias,
+            vencimento: parcela.vencimento,
+            valor: parcela.valor,
+          }))
+        : [];
+      const contasPagar = geraFinanceiro && venda
+        ? agruparCustoPorFornecedor(itensPayload)
+        : [];
 
-      const { data: pedidoCriado, error: erroPedido } = await supabase
-        .from("pedidos")
-        .insert(pedidoPayload)
-        .select()
-        .single();
+      const resultado = await criarPedidoCompleto({
+        idempotencyKey: idempotencyKeyRef.current,
+        pedido: pedidoPayload,
+        itens: itensPayload,
+        contasReceber,
+        contasPagar,
+      });
 
-      if (erroPedido) {
-        throw erroPedido;
-      }
-
-      pedidoCriadoOnline = pedidoCriado;
-
-      const itensBanco = itensPayload.map((item) => ({
-        ...item,
-        pedido_id: pedidoCriado.id,
-      }));
-
-      const { error: erroItens } = await supabase
-        .from("pedido_itens")
-        .insert(itensBanco);
-
-      if (erroItens) {
-        throw erroItens;
-      }
-
-      await registrarFinanceiro(pedidoCriado, itensPayload);
-
-      alert("Pedido salvo com sucesso.");
+      alert(`Pedido ${resultado.numero} salvo com sucesso.`);
 
       limparFormulario();
       await carregarDados();
     } catch (error: any) {
       console.error("Erro ao salvar pedido:", error);
-
-      if (pedidoCriadoOnline?.id) {
-        await desfazerPedidoCriado(pedidoCriadoOnline.id);
-
-        alert(
-          `O pedido NÃO foi salvo porque houve erro nos itens ou no financeiro.
-
-Erro real: ${error?.message || JSON.stringify(error)}
-
-O sistema desfez o pedido incompleto.`
-        );
-
-        await carregarDados();
-        return;
-      }
 
       if (erroDeConexao(error)) {
         alert(
@@ -704,12 +571,9 @@ O sistema desfez o pedido incompleto.`
                   </p>
                 </div>
 
-                <button
-                  onClick={gerarNovoNumero}
-                  className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold"
-                >
-                  Gerar número
-                </button>
+                <span className="text-sm text-slate-500">
+                  O número será gerado ao salvar.
+                </span>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -727,12 +591,10 @@ O sistema desfez o pedido incompleto.`
                 </select>
 
                 <input
-                  placeholder="Número do pedido"
+                  placeholder="Gerado automaticamente ao salvar"
                   value={form.numero}
-                  onChange={(e) =>
-                    setForm({ ...form, numero: e.target.value })
-                  }
-                  className="rounded-xl border border-slate-200 px-4 py-3"
+                  readOnly
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500"
                 />
 
                 <input
@@ -803,6 +665,31 @@ O sistema desfez o pedido incompleto.`
                   }
                   className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
                 />
+
+                {tipoGeraFinanceiroVenda(form.tipo) && valorTotalPedido > 0 && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-4">
+                    <p className="text-sm font-bold text-blue-900">
+                      Parcelas previstas
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {planoPagamento.parcelas.map((parcela) => (
+                        <span
+                          key={`${parcela.numero}-${parcela.vencimento}`}
+                          className="rounded-lg bg-white px-3 py-2 text-sm text-blue-900 shadow-sm"
+                        >
+                          {parcela.numero}/{parcela.totalParcelas}:{" "}
+                          {formatarMoeda(parcela.valor)} em{" "}
+                          {formatarData(parcela.vencimento)}
+                        </span>
+                      ))}
+                    </div>
+                    {planoPagamento.aviso && (
+                      <p className="mt-2 text-xs font-medium text-amber-700">
+                        {planoPagamento.aviso}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <textarea
                   placeholder="Observações do pedido"
