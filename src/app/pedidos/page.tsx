@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 import { gerarPlanoPagamento } from "@/lib/pedidos/condicaoPagamento";
 import { criarPedidoCompleto } from "@/lib/pedidos/criarPedidoCompleto";
+import { cancelarPedido } from "@/lib/pedidos/cancelarPedido";
 
 type Cliente = {
   id: string;
@@ -158,6 +159,7 @@ export default function PedidosPage() {
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [carregandoDados, setCarregandoDados] = useState(true);
+  const [cancelandoId, setCancelandoId] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
 
   async function carregarDados() {
@@ -447,14 +449,6 @@ export default function PedidosPage() {
     return Array.from(mapa.values()).filter((grupo) => grupo.valor > 0);
   }
 
-  async function desfazerPedidoCriado(pedidoId: string) {
-    await supabase.from("pedido_itens").delete().eq("pedido_id", pedidoId);
-    await supabase.from("contas_receber").delete().eq("pedido_id", pedidoId);
-    await supabase.from("contas_pagar").delete().eq("pedido_id", pedidoId);
-    await supabase.from("comissoes_financeiro").delete().eq("pedido_id", pedidoId);
-    await supabase.from("pedidos").delete().eq("id", pedidoId);
-  }
-
   async function salvarPedido() {
     if (carregando) return;
 
@@ -518,14 +512,29 @@ export default function PedidosPage() {
     }
   }
 
-  async function excluirPedido(id: string) {
-    if (!confirm("Deseja excluir este pedido?")) return;
+  async function solicitarCancelamento(pedido: any) {
+    if (normalizarTexto(pedido.status) === "cancelado") return;
 
+    const motivo = prompt(
+      `Informe o motivo do cancelamento do pedido ${pedido.numero || ""}:`
+    );
+    if (motivo === null) return;
+    if (motivo.trim().length < 5) {
+      return alert("Informe um motivo com pelo menos 5 caracteres.");
+    }
+    if (!confirm("Confirmar o cancelamento? O histórico será preservado.")) {
+      return;
+    }
+
+    setCancelandoId(pedido.id);
     try {
-      await desfazerPedidoCriado(id);
+      const resultado = await cancelarPedido(pedido.id, motivo.trim());
+      alert(`Pedido ${resultado.numero} cancelado com sucesso.`);
       await carregarDados();
     } catch (error: any) {
-      alert(error?.message || "Erro ao excluir pedido.");
+      alert(error?.message || "Erro ao cancelar pedido.");
+    } finally {
+      setCancelandoId(null);
     }
   }
 
@@ -931,6 +940,12 @@ export default function PedidosPage() {
                         <p className="text-sm font-semibold text-green-700">
                           Comissão: {formatarMoeda(pedido.valor_comissao)}
                         </p>
+
+                        {pedido.motivo_cancelamento && (
+                          <p className="mt-2 text-sm font-semibold text-red-700">
+                            Motivo do cancelamento: {pedido.motivo_cancelamento}
+                          </p>
+                        )}
                       </div>
 
                       <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
@@ -947,10 +962,18 @@ export default function PedidosPage() {
                       </button>
 
                       <button
-                        onClick={() => excluirPedido(pedido.id)}
-                        className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700"
+                        onClick={() => solicitarCancelamento(pedido)}
+                        disabled={
+                          cancelandoId === pedido.id ||
+                          normalizarTexto(pedido.status) === "cancelado"
+                        }
+                        className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Excluir
+                        {cancelandoId === pedido.id
+                          ? "Cancelando..."
+                          : normalizarTexto(pedido.status) === "cancelado"
+                            ? "Cancelado"
+                            : "Cancelar"}
                       </button>
                     </div>
                   </div>
