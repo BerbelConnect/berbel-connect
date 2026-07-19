@@ -160,12 +160,31 @@ export default function PedidosPage() {
   const [carregando, setCarregando] = useState(false);
   const [carregandoDados, setCarregandoDados] = useState(true);
   const [cancelandoId, setCancelandoId] = useState<string | null>(null);
+  const [administrador, setAdministrador] = useState(false);
   const idempotencyKeyRef = useRef<string | null>(null);
 
   async function carregarDados() {
     setCarregandoDados(true);
 
     try {
+      const { data: sessao } = await supabase.auth.getSession();
+      const email = sessao.session?.user.email;
+
+      if (email) {
+        const { data: perfilAtual } = await supabase
+          .from("perfis_usuarios")
+          .select("perfil")
+          .eq("email", email)
+          .eq("ativo", true)
+          .single();
+
+        setAdministrador(
+          normalizarTexto(perfilAtual?.perfil) === "administrador"
+        );
+      } else {
+        setAdministrador(false);
+      }
+
       const [clientesResp, produtosResp, pedidosResp] = await Promise.all([
         supabase
           .from("clientes")
@@ -961,20 +980,22 @@ export default function PedidosPage() {
                         PDF
                       </button>
 
-                      <button
-                        onClick={() => solicitarCancelamento(pedido)}
-                        disabled={
-                          cancelandoId === pedido.id ||
-                          normalizarTexto(pedido.status) === "cancelado"
-                        }
-                        className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {cancelandoId === pedido.id
-                          ? "Cancelando..."
-                          : normalizarTexto(pedido.status) === "cancelado"
-                            ? "Cancelado"
-                            : "Cancelar"}
-                      </button>
+                      {administrador && (
+                        <button
+                          onClick={() => solicitarCancelamento(pedido)}
+                          disabled={
+                            cancelandoId === pedido.id ||
+                            normalizarTexto(pedido.status) === "cancelado"
+                          }
+                          className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {cancelandoId === pedido.id
+                            ? "Cancelando..."
+                            : normalizarTexto(pedido.status) === "cancelado"
+                              ? "Cancelado"
+                              : "Cancelar"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
