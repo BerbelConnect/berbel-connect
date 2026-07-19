@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
@@ -65,6 +66,15 @@ export default function LoginPage() {
           >
             {carregando ? "Entrando..." : "Entrar"}
           </button>
+
+          <div className="text-center">
+            <Link
+              href="/recuperar-senha"
+              className="text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+            >
+              Esqueci minha senha
+            </Link>
+          </div>
         </div>
       </section>
     </main>
