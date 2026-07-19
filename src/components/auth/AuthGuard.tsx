@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const rotasPublicas = ["/login"];
+const rotasPublicas = ["/login", "/recuperar-senha", "/atualizar-senha"];
 
 const permissoes = [
   { prefixo: "/dashboard", perfis: ["Administrador", "Representante", "Financeiro", "Assistente"] },
