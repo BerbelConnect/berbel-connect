@@ -22,6 +22,13 @@ type Cliente = {
   estado: string;
   observacoes: string;
   ativo?: boolean;
+  responsavel_perfil_id?: string;
+};
+
+type Representante = {
+  id: string;
+  nome: string | null;
+  email: string;
 };
 
 const inicial: Cliente = {
@@ -40,6 +47,7 @@ const inicial: Cliente = {
   estado: "SP",
   observacoes: "",
   ativo: true,
+  responsavel_perfil_id: "",
 };
 
 export default function ClientesPage() {
@@ -47,6 +55,48 @@ export default function ClientesPage() {
   const [form, setForm] = useState<Cliente>(inicial);
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [perfilAtual, setPerfilAtual] = useState("");
+  const [representantes, setRepresentantes] = useState<Representante[]>([]);
+
+  const administrador = perfilAtual === "Administrador";
+
+  function nomeRepresentante(id?: string) {
+    const representante = representantes.find((item) => item.id === id);
+    return representante?.nome || representante?.email || "-";
+  }
+
+  async function carregarAcesso() {
+    const { data: usuario } = await supabase.auth.getUser();
+    const emailUsuario = usuario.user?.email;
+    if (!emailUsuario) return;
+
+    const { data: perfil } = await supabase
+      .from("perfis_usuarios")
+      .select("perfil")
+      .ilike("email", emailUsuario)
+      .single();
+
+    setPerfilAtual(perfil?.perfil || "");
+
+    const { data: lista, error } = await supabase
+      .from("perfis_usuarios")
+      .select("id, nome, email")
+      .eq("perfil", "Representante")
+      .eq("ativo", true)
+      .order("nome");
+
+    if (error) return alert(error.message);
+    const representantesAtivos = lista || [];
+    setRepresentantes(representantesAtivos);
+
+    if (perfil?.perfil === "Administrador" && representantesAtivos.length === 1) {
+      setForm((atual) =>
+        atual.id || atual.responsavel_perfil_id
+          ? atual
+          : { ...atual, responsavel_perfil_id: representantesAtivos[0].id }
+      );
+    }
+  }
 
   async function carregarClientes() {
     const { data, error } = await supabase
@@ -60,6 +110,9 @@ export default function ClientesPage() {
 
   async function salvarCliente() {
     if (!form.razao_social.trim()) return alert("Informe a razão social.");
+    if (administrador && !form.responsavel_perfil_id) {
+      return alert("Selecione o representante responsável pela carteira.");
+    }
 
     setCarregando(true);
 
@@ -79,6 +132,7 @@ export default function ClientesPage() {
       estado: form.estado,
       observacoes: form.observacoes,
       ativo: form.ativo,
+      responsavel_perfil_id: form.responsavel_perfil_id || undefined,
     };
 
     const { error } = form.id
@@ -89,7 +143,13 @@ export default function ClientesPage() {
 
     if (error) return alert(error.message);
 
-    setForm(inicial);
+    setForm({
+      ...inicial,
+      responsavel_perfil_id:
+        administrador && representantes.length === 1
+          ? representantes[0].id
+          : "",
+    });
     carregarClientes();
   }
 
@@ -111,6 +171,7 @@ export default function ClientesPage() {
       estado: cliente.estado || "SP",
       observacoes: cliente.observacoes || "",
       ativo: cliente.ativo ?? true,
+      responsavel_perfil_id: cliente.responsavel_perfil_id || "",
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -166,7 +227,12 @@ export default function ClientesPage() {
   const bairros = new Set(clientes.map((c) => c.bairro).filter(Boolean)).size;
 
   useEffect(() => {
-    carregarClientes();
+    const carregamento = window.setTimeout(() => {
+      void carregarClientes();
+      void carregarAcesso();
+    }, 0);
+
+    return () => window.clearTimeout(carregamento);
   }, []);
 
   return (
@@ -194,7 +260,7 @@ export default function ClientesPage() {
                 <Campo label="Razão Social" value={form.razao_social} onChange={(v) => setForm({ ...form, razao_social: v })} />
                 <Campo label="Nome Fantasia" value={form.nome_fantasia} onChange={(v) => setForm({ ...form, nome_fantasia: v })} />
                 <Campo label="CNPJ" value={form.cnpj} onChange={(v) => setForm({ ...form, cnpj: v })} />
-                <Campo label="Responsável" value={form.responsavel} onChange={(v) => setForm({ ...form, responsavel: v })} />
+                <Campo label="Contato no cliente" value={form.responsavel} onChange={(v) => setForm({ ...form, responsavel: v })} />
 
                 <Campo label="Telefone" value={form.telefone} onChange={(v) => setForm({ ...form, telefone: v })} />
                 <Campo label="WhatsApp" value={form.whatsapp} onChange={(v) => setForm({ ...form, whatsapp: v })} />
@@ -207,6 +273,27 @@ export default function ClientesPage() {
                 <Campo label="Cidade" value={form.cidade} onChange={(v) => setForm({ ...form, cidade: v })} />
 
                 <Campo label="Estado" value={form.estado} onChange={(v) => setForm({ ...form, estado: v })} />
+
+                {administrador ? (
+                  <select
+                    value={form.responsavel_perfil_id || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, responsavel_perfil_id: e.target.value })
+                    }
+                    className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+                  >
+                    <option value="">Representante responsável</option>
+                    {representantes.map((representante) => (
+                      <option key={representante.id} value={representante.id}>
+                        {representante.nome || representante.email}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Carteira: {nomeRepresentante(form.responsavel_perfil_id)}
+                  </div>
+                )}
 
                 <select
                   value={form.ativo ? "Ativo" : "Inativo"}
@@ -243,7 +330,15 @@ export default function ClientesPage() {
                 </button>
 
                 <button
-                  onClick={() => setForm(inicial)}
+                  onClick={() =>
+                    setForm({
+                      ...inicial,
+                      responsavel_perfil_id:
+                        administrador && representantes.length === 1
+                          ? representantes[0].id
+                          : "",
+                    })
+                  }
                   className="rounded-xl border border-slate-300 px-6 py-3 font-semibold"
                 >
                   Limpar
@@ -270,7 +365,8 @@ export default function ClientesPage() {
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Empresa</th>
-                      <th className="px-4 py-3">Responsável</th>
+                      <th className="px-4 py-3">Contato</th>
+                      <th className="px-4 py-3">Representante</th>
                       <th className="px-4 py-3">Endereço</th>
                       <th className="px-4 py-3">Bairro</th>
                       <th className="px-4 py-3">Cidade</th>
@@ -294,6 +390,10 @@ export default function ClientesPage() {
 
                         <td className="px-4 py-4">
                           {cliente.responsavel || "-"}
+                        </td>
+
+                        <td className="px-4 py-4 font-medium text-slate-700">
+                          {nomeRepresentante(cliente.responsavel_perfil_id)}
                         </td>
 
                         <td className="px-4 py-4">
@@ -342,12 +442,14 @@ export default function ClientesPage() {
                             Maps
                           </button>
 
-                          <button
-                            onClick={() => excluirCliente(cliente.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
-                            Excluir
-                          </button>
+                          {administrador && (
+                            <button
+                              onClick={() => excluirCliente(cliente.id)}
+                              className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                            >
+                              Excluir
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -355,7 +457,7 @@ export default function ClientesPage() {
                     {clientesFiltrados.length === 0 && (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="px-4 py-8 text-center text-slate-500"
                         >
                           Nenhum cliente encontrado.
