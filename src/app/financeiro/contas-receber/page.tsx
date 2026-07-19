@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 
 type Cliente = {
   id: string;
@@ -100,15 +101,13 @@ export default function ContasReceberPage() {
       descricao: form.descricao,
       valor: Number(form.valor || 0),
       vencimento: form.vencimento || null,
-      recebimento: form.recebimento || null,
-      status: form.status || "Pendente",
       forma_pagamento: form.forma_pagamento,
       observacoes: form.observacoes,
     };
 
     const { error } = form.id
       ? await supabase.from("contas_receber").update(payload).eq("id", form.id)
-      : await supabase.from("contas_receber").insert(payload);
+      : await supabase.from("contas_receber").insert({ ...payload, status: "Pendente" });
 
     setCarregando(false);
 
@@ -135,19 +134,6 @@ export default function ContasReceberPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function excluirConta(id?: string) {
-    if (!id) return;
-    if (!confirm("Deseja excluir esta conta a receber?")) return;
-
-    const { error } = await supabase
-      .from("contas_receber")
-      .delete()
-      .eq("id", id);
-
-    if (error) return alert(error.message);
-    carregarDados();
-  }
-
   async function marcarRecebida(conta: any) {
     const forma = prompt(
       "Forma de recebimento: PIX, TED, Boleto, Dinheiro, Cartão ou outro",
@@ -155,18 +141,22 @@ export default function ContasReceberPage() {
     );
 
     if (forma === null) return;
+    const motivo = prompt("Motivo da baixa", "Recebimento confirmado");
+    if (motivo === null) return;
 
-    const { error } = await supabase
-      .from("contas_receber")
-      .update({
-        status: "Recebido",
-        recebimento: hojeISO(),
-        forma_pagamento: forma,
-      })
-      .eq("id", conta.id);
-
-    if (error) return alert(error.message);
-    carregarDados();
+    try {
+      await baixarMovimento({
+        tipo: "conta_receber",
+        id: conta.id,
+        data: hojeISO(),
+        formaPagamento: forma,
+        motivo,
+      });
+      alert("Recebimento registrado com auditoria.");
+      carregarDados();
+    } catch (erro) {
+      alert(erro instanceof Error ? erro.message : "Não foi possível registrar a baixa.");
+    }
   }
 
   useEffect(() => {
@@ -281,30 +271,12 @@ export default function ContasReceberPage() {
                 />
 
                 <Campo
-                  label="Recebimento"
-                  type="date"
-                  value={form.recebimento}
-                  onChange={(v) => setForm({ ...form, recebimento: v })}
-                />
-
-                <Campo
                   label="Forma de pagamento"
                   value={form.forma_pagamento}
                   onChange={(v) =>
                     setForm({ ...form, forma_pagamento: v })
                   }
                 />
-
-                <select
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm({ ...form, status: e.target.value })
-                  }
-                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
-                >
-                  <option value="Pendente">Pendente</option>
-                  <option value="Recebido">Recebido</option>
-                </select>
 
                 <textarea
                   placeholder="Observações"
@@ -439,12 +411,6 @@ export default function ContasReceberPage() {
                             </button>
                           )}
 
-                          <button
-                            onClick={() => excluirConta(conta.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
-                            Excluir
-                          </button>
                         </td>
                       </tr>
                     ))}

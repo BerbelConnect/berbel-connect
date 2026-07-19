@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 
 type ContaPagar = {
   id?: string;
@@ -65,15 +66,13 @@ export default function ContasPagarPage() {
       fornecedor: form.fornecedor,
       valor: Number(form.valor || 0),
       vencimento: form.vencimento || null,
-      pagamento: form.pagamento || null,
-      status: form.status || "Pendente",
       forma_pagamento: form.forma_pagamento,
       observacoes: form.observacoes,
     };
 
     const { error } = form.id
       ? await supabase.from("contas_pagar").update(payload).eq("id", form.id)
-      : await supabase.from("contas_pagar").insert(payload);
+      : await supabase.from("contas_pagar").insert({ ...payload, status: "Pendente" });
 
     setCarregando(false);
 
@@ -100,27 +99,25 @@ export default function ContasPagarPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function excluirConta(id?: string) {
-    if (!id) return;
-    if (!confirm("Deseja excluir esta conta a pagar?")) return;
-
-    const { error } = await supabase.from("contas_pagar").delete().eq("id", id);
-
-    if (error) return alert(error.message);
-    carregarContas();
-  }
-
   async function marcarPago(conta: any) {
-    const { error } = await supabase
-      .from("contas_pagar")
-      .update({
-        status: "Pago",
-        pagamento: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", conta.id);
+    const forma = prompt("Forma de pagamento", conta.forma_pagamento || "PIX");
+    if (forma === null) return;
+    const motivo = prompt("Motivo da baixa", "Pagamento confirmado");
+    if (motivo === null) return;
 
-    if (error) return alert(error.message);
-    carregarContas();
+    try {
+      await baixarMovimento({
+        tipo: "conta_pagar",
+        id: conta.id,
+        data: new Date().toISOString().slice(0, 10),
+        formaPagamento: forma,
+        motivo,
+      });
+      alert("Pagamento registrado com auditoria.");
+      carregarContas();
+    } catch (erro) {
+      alert(erro instanceof Error ? erro.message : "Não foi possível registrar a baixa.");
+    }
   }
 
   useEffect(() => {
@@ -185,17 +182,7 @@ export default function ContasPagarPage() {
                 <Campo label="Valor" type="number" value={form.valor} onChange={(v) => setForm({ ...form, valor: v })} />
 
                 <Campo label="Vencimento" type="date" value={form.vencimento} onChange={(v) => setForm({ ...form, vencimento: v })} />
-                <Campo label="Pagamento" type="date" value={form.pagamento} onChange={(v) => setForm({ ...form, pagamento: v })} />
                 <Campo label="Forma de pagamento" value={form.forma_pagamento} onChange={(v) => setForm({ ...form, forma_pagamento: v })} />
-
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
-                >
-                  <option value="Pendente">Pendente</option>
-                  <option value="Pago">Pago</option>
-                </select>
 
                 <textarea
                   placeholder="Observações"
@@ -279,12 +266,6 @@ export default function ContasPagarPage() {
                             </button>
                           )}
 
-                          <button
-                            onClick={() => excluirConta(conta.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
-                            Excluir
-                          </button>
                         </td>
                       </tr>
                     ))}
