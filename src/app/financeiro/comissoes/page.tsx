@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 
 function moeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -27,29 +28,21 @@ export default function ComissoesFinanceiroPage() {
   }
 
   async function marcarRecebida(id: string) {
-    const { error } = await supabase
-      .from("comissoes_financeiro")
-      .update({
-        status: "Recebida",
-        data_recebimento: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", id);
+    const motivo = prompt("Motivo da baixa", "Comissão recebida");
+    if (motivo === null) return;
 
-    if (error) return alert(error.message);
-    carregarComissoes();
-  }
-
-  async function excluirComissao(id?: string) {
-    if (!id) return;
-    if (!confirm("Deseja excluir esta comissão?")) return;
-
-    const { error } = await supabase
-      .from("comissoes_financeiro")
-      .delete()
-      .eq("id", id);
-
-    if (error) return alert(error.message);
-    carregarComissoes();
+    try {
+      await baixarMovimento({
+        tipo: "comissao",
+        id,
+        data: new Date().toISOString().slice(0, 10),
+        motivo,
+      });
+      alert("Comissão recebida com registro de auditoria.");
+      carregarComissoes();
+    } catch (erro) {
+      alert(erro instanceof Error ? erro.message : "Não foi possível registrar a baixa.");
+    }
   }
 
   useEffect(() => {
@@ -167,12 +160,6 @@ export default function ComissoesFinanceiroPage() {
                             </button>
                           )}
 
-                          <button
-                            onClick={() => excluirComissao(item.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                          >
-                            Excluir
-                          </button>
                         </td>
                       </tr>
                     ))}
