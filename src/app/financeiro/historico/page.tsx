@@ -57,6 +57,7 @@ export default function HistoricoFinanceiroPage() {
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
   const [busca, setBusca] = useState("");
   const [entidade, setEntidade] = useState("todos");
+  const [operacao, setOperacao] = useState("todas");
   const [dataInicial, setDataInicial] = useState("");
   const [dataFinal, setDataFinal] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -96,6 +97,7 @@ export default function HistoricoFinanceiroPage() {
 
     return movimentos.filter((item) => {
       if (entidade !== "todos" && item.entidade !== entidade) return false;
+      if (operacao !== "todas" && item.operacao !== operacao) return false;
       if (dataInicial && item.data_movimento < dataInicial) return false;
       if (dataFinal && item.data_movimento > dataFinal) return false;
 
@@ -116,7 +118,7 @@ export default function HistoricoFinanceiroPage() {
         .toLowerCase()
         .includes(texto);
     });
-  }, [movimentos, busca, entidade, dataInicial, dataFinal]);
+  }, [movimentos, busca, entidade, operacao, dataInicial, dataFinal]);
 
   const totalMovimentado = filtrados.reduce(
     (soma, item) => soma + Number(item.valor || 0),
@@ -130,6 +132,7 @@ export default function HistoricoFinanceiroPage() {
   function limparFiltros() {
     setBusca("");
     setEntidade("todos");
+    setOperacao("todas");
     setDataInicial("");
     setDataFinal("");
   }
@@ -220,6 +223,16 @@ export default function HistoricoFinanceiroPage() {
                   <option value="comissoes_financeiro">Comissões</option>
                 </select>
 
+                <select
+                  value={operacao}
+                  onChange={(event) => setOperacao(event.target.value)}
+                  className="rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  <option value="todas">Todas as operações</option>
+                  <option value="Baixa">Baixas</option>
+                  <option value="Estorno">Estornos</option>
+                </select>
+
                 <label className="flex items-center gap-2 text-sm text-slate-600">
                   De
                   <input
@@ -283,6 +296,7 @@ export default function HistoricoFinanceiroPage() {
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Tipo</th>
+                      <th className="px-4 py-3">Operação</th>
                       <th className="px-4 py-3">Data</th>
                       <th className="px-4 py-3">Valor</th>
                       <th className="px-4 py-3">Alteração</th>
@@ -298,6 +312,17 @@ export default function HistoricoFinanceiroPage() {
                       <tr key={item.id} className="align-top">
                         <td className="px-4 py-4 font-semibold text-slate-800">
                           {rotulosEntidade[item.entidade]}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${
+                              item.operacao === "Estorno"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-green-100 text-green-700"
+                            }`}
+                          >
+                            {item.operacao}
+                          </span>
                         </td>
                         <td className="px-4 py-4">
                           {dataBrasil(item.data_movimento)}
@@ -330,7 +355,7 @@ export default function HistoricoFinanceiroPage() {
                     {!carregando && filtrados.length === 0 && (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="px-4 py-10 text-center text-slate-500"
                         >
                           Nenhuma movimentação encontrada.
@@ -341,7 +366,7 @@ export default function HistoricoFinanceiroPage() {
                     {carregando && (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="px-4 py-10 text-center text-slate-500"
                         >
                           Carregando histórico...

@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
+import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
 
 type Cliente = {
   id: string;
@@ -156,6 +157,23 @@ export default function ContasReceberPage() {
       carregarDados();
     } catch (erro) {
       alert(erro instanceof Error ? erro.message : "Não foi possível registrar a baixa.");
+    }
+  }
+
+  async function estornarRecebimento(conta: any) {
+    const motivo = prompt("Motivo do estorno");
+    if (motivo === null) return;
+
+    try {
+      await estornarMovimento({
+        tipo: "conta_receber",
+        id: conta.id,
+        motivo,
+      });
+      alert("Recebimento estornado com registro de auditoria.");
+      carregarDados();
+    } catch (erro) {
+      alert(erro instanceof Error ? erro.message : "Não foi possível realizar o estorno.");
     }
   }
 
@@ -408,6 +426,15 @@ export default function ContasReceberPage() {
                               className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
                             >
                               Receber
+                            </button>
+                          )}
+
+                          {conta.status === "Recebido" && (
+                            <button
+                              onClick={() => estornarRecebimento(conta)}
+                              className="rounded-lg bg-amber-100 px-3 py-2 text-amber-800"
+                            >
+                              Estornar
                             </button>
                           )}
 
