@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
+import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
 
 type ContaPagar = {
   id?: string;
@@ -117,6 +118,23 @@ export default function ContasPagarPage() {
       carregarContas();
     } catch (erro) {
       alert(erro instanceof Error ? erro.message : "Não foi possível registrar a baixa.");
+    }
+  }
+
+  async function estornarPagamento(conta: any) {
+    const motivo = prompt("Motivo do estorno");
+    if (motivo === null) return;
+
+    try {
+      await estornarMovimento({
+        tipo: "conta_pagar",
+        id: conta.id,
+        motivo,
+      });
+      alert("Pagamento estornado com registro de auditoria.");
+      carregarContas();
+    } catch (erro) {
+      alert(erro instanceof Error ? erro.message : "Não foi possível realizar o estorno.");
     }
   }
 
@@ -263,6 +281,15 @@ export default function ContasPagarPage() {
                               className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700"
                             >
                               Pagar
+                            </button>
+                          )}
+
+                          {conta.status === "Pago" && (
+                            <button
+                              onClick={() => estornarPagamento(conta)}
+                              className="rounded-lg bg-amber-100 px-3 py-2 text-amber-800"
+                            >
+                              Estornar
                             </button>
                           )}
 
