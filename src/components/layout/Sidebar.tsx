@@ -226,7 +226,7 @@ export function Sidebar() {
         ☰ Menu
       </button>
 
-      <aside className="fixed top-0 hidden h-screen w-72 shrink-0 flex-col bg-slate-900 text-white lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden h-screen w-72 flex-col bg-slate-900 text-white lg:flex">
         <SidebarContent
           carregando={carregando}
           nome={nome}
