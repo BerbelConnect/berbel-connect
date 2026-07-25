@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import {
   conciliarMovimento,
@@ -163,10 +162,14 @@ export default function ConciliacaoFinanceiraPage() {
     <div className="min-h-screen bg-slate-100">
       <Sidebar />
       <main className="md:ml-[220px]">
-        <PageHeader
-          title="Conciliação Financeira"
-          subtitle="Conferência das baixas com o extrato bancário"
-        />
+  <div className="mb-6">
+  <h1 className="text-3xl font-bold text-slate-900">
+    Conciliação Financeira
+  </h1>
+  <p className="mt-1 text-slate-600">
+    Conferência das baixas com o extrato bancário
+  </p>
+</div>
 
         <div className="space-y-5 p-6">
           <section className="grid gap-4 md:grid-cols-3">
