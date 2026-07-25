@@ -164,7 +164,6 @@ export default function ConciliacaoFinanceiraPage() {
       <Sidebar />
       <main className="md:ml-[220px]">
         <PageHeader
-          eyebrow="Financeiro"
           title="Conciliação Financeira"
           subtitle="Conferência das baixas com o extrato bancário"
         />
