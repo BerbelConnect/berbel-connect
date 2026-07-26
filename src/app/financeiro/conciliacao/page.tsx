@@ -161,7 +161,7 @@ export default function ConciliacaoFinanceiraPage() {
   return (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
-      <main className="min-w-0 flex-1 lg:ml-72">
+      <main className="min-w-0 flex-1">
   <div className="mb-6">
   <h1 className="text-3xl font-bold text-slate-900">
     Conciliação Financeira
