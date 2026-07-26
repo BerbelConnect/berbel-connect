@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { supabase } from "@/lib/supabase";
 import {
   conciliarMovimento,
   desfazerConciliacao,
 } from "@/lib/financeiro/conciliacao";
+import {
+  hashArquivo,
+  lerCsv,
+  LinhaExtrato,
+  sugerirCorrespondencias,
+} from "@/lib/financeiro/extrato";
 
 type Movimento = {
   id: string;
@@ -49,6 +55,11 @@ export default function ConciliacaoFinanceiraPage() {
     "Pendentes",
   );
   const [carregando, setCarregando] = useState(true);
+  const [arquivoNome, setArquivoNome] = useState("");
+  const [arquivoHash, setArquivoHash] = useState("");
+  const [linhasExtrato, setLinhasExtrato] = useState<LinhaExtrato[]>([]);
+  const [erroArquivo, setErroArquivo] = useState("");
+  const [importando, setImportando] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -88,6 +99,15 @@ export default function ConciliacaoFinanceiraPage() {
     [conciliacoes],
   );
 
+  const pendentes = useMemo(
+    () =>
+      movimentos.filter(
+        (movimento) =>
+          conciliacaoPorMovimento.get(movimento.id)?.status !== "Conciliado",
+      ),
+    [conciliacaoPorMovimento, movimentos],
+  );
+
   const linhas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return movimentos.filter((movimento) => {
@@ -120,6 +140,77 @@ export default function ConciliacaoFinanceiraPage() {
     [conciliacaoPorMovimento, movimentos],
   );
 
+  const linhasValidas = linhasExtrato.filter((linha) => linha.valido);
+  const sugestoes = linhasExtrato.filter(
+    (linha) => linha.movimentoSugeridoId,
+  ).length;
+
+  async function selecionarArquivo(evento: ChangeEvent<HTMLInputElement>) {
+    const arquivo = evento.target.files?.[0];
+    evento.target.value = "";
+    if (!arquivo) return;
+
+    setErroArquivo("");
+    setLinhasExtrato([]);
+    setArquivoNome(arquivo.name);
+
+    try {
+      if (!arquivo.name.toLowerCase().endsWith(".csv")) {
+        throw new Error("Selecione um arquivo no formato CSV.");
+      }
+      const conteudo = await arquivo.text();
+      const lidas = lerCsv(conteudo);
+      setLinhasExtrato(sugerirCorrespondencias(lidas, pendentes));
+      setArquivoHash(await hashArquivo(conteudo));
+    } catch (erro) {
+      setArquivoHash("");
+      setErroArquivo(
+        erro instanceof Error ? erro.message : "Não foi possível ler o CSV.",
+      );
+    }
+  }
+
+  function limparArquivo() {
+    setArquivoNome("");
+    setArquivoHash("");
+    setLinhasExtrato([]);
+    setErroArquivo("");
+  }
+
+  async function importarArquivo() {
+    if (!arquivoNome || !arquivoHash || linhasValidas.length === 0) return;
+    if (linhasValidas.length !== linhasExtrato.length) {
+      alert("Corrija as linhas inválidas antes de importar o extrato.");
+      return;
+    }
+
+    setImportando(true);
+    const lancamentos = linhasValidas.map((linha) => ({
+      numero_linha: linha.numeroLinha,
+      data_lancamento: linha.data,
+      descricao: linha.descricao,
+      referencia: linha.referencia,
+      valor: linha.valor,
+      movimento_sugerido_id: linha.movimentoSugeridoId || null,
+    }));
+    const { error } = await supabase.rpc("importar_extrato_bancario", {
+      p_nome_arquivo: arquivoNome,
+      p_hash_arquivo: arquivoHash,
+      p_lancamentos: lancamentos,
+    });
+    setImportando(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert(
+      `Extrato importado com sucesso: ${linhasValidas.length} lançamento(s).`,
+    );
+    limparArquivo();
+  }
+
   async function conciliar(movimento: Movimento) {
     const data = prompt("Data da conciliação (AAAA-MM-DD)", hoje());
     if (data === null) return;
@@ -137,7 +228,9 @@ export default function ConciliacaoFinanceiraPage() {
       alert("Movimento conciliado com sucesso.");
       carregar();
     } catch (erro) {
-      alert(erro instanceof Error ? erro.message : "Não foi possível conciliar.");
+      alert(
+        erro instanceof Error ? erro.message : "Não foi possível conciliar.",
+      );
     }
   }
 
@@ -162,14 +255,14 @@ export default function ConciliacaoFinanceiraPage() {
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
       <main className="min-w-0 flex-1">
-  <div className="mb-6">
-  <h1 className="text-3xl font-bold text-slate-900">
-    Conciliação Financeira
-  </h1>
-  <p className="mt-1 text-slate-600">
-    Conferência das baixas com o extrato bancário
-  </p>
-</div>
+        <div className="p-6 pb-0">
+          <h1 className="text-3xl font-bold text-slate-900">
+            Conciliação Financeira
+          </h1>
+          <p className="mt-1 text-slate-600">
+            Conferência das baixas com o extrato bancário
+          </p>
+        </div>
 
         <div className="space-y-5 p-6">
           <section className="grid gap-4 md:grid-cols-3">
@@ -185,6 +278,105 @@ export default function ConciliacaoFinanceiraPage() {
           </section>
 
           <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Importar extrato bancário</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  CSV com as colunas Data, Descrição, Valor e Referência
+                  (opcional).
+                </p>
+              </div>
+              <label className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-center font-semibold text-white">
+                Selecionar CSV
+                <input
+                  className="hidden"
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={selecionarArquivo}
+                />
+              </label>
+            </div>
+
+            {erroArquivo && (
+              <p className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">
+                {erroArquivo}
+              </p>
+            )}
+
+            {linhasExtrato.length > 0 && (
+              <div className="mt-5 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Resumo titulo="Arquivo" valor={arquivoNome} />
+                  <Resumo titulo="Lançamentos" valor={linhasExtrato.length} />
+                  <Resumo titulo="Válidos" valor={linhasValidas.length} />
+                  <Resumo titulo="Sugestões" valor={sugestoes} />
+                </div>
+                <div className="max-h-72 overflow-auto rounded-xl border border-slate-200">
+                  <table className="w-full min-w-[900px] text-left text-sm">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="p-3">Linha</th>
+                        <th className="p-3">Data</th>
+                        <th className="p-3">Descrição</th>
+                        <th className="p-3">Valor</th>
+                        <th className="p-3">Correspondência sugerida</th>
+                        <th className="p-3">Validação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linhasExtrato.map((linha) => (
+                        <tr key={linha.numeroLinha} className="border-t">
+                          <td className="p-3">{linha.numeroLinha}</td>
+                          <td className="p-3">{linha.data || "—"}</td>
+                          <td className="p-3">{linha.descricao || "—"}</td>
+                          <td className="p-3 font-semibold">
+                            {Number.isFinite(linha.valor)
+                              ? moeda(linha.valor)
+                              : "—"}
+                          </td>
+                          <td className="p-3">
+                            {linha.movimentoSugeridoTexto || "Sem sugestão"}
+                          </td>
+                          <td className="p-3">
+                            <span
+                              className={`rounded-full px-3 py-1 font-semibold ${
+                                linha.valido
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}
+                            >
+                              {linha.valido ? "Válida" : linha.erro}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    className="rounded-xl border border-slate-300 px-5 py-3 font-semibold"
+                    onClick={limparArquivo}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white disabled:opacity-50"
+                    disabled={
+                      importando ||
+                      linhasValidas.length === 0 ||
+                      linhasValidas.length !== linhasExtrato.length
+                    }
+                    onClick={importarArquivo}
+                  >
+                    {importando ? "Importando..." : "Confirmar importação"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <input
                 className="flex-1 rounded-xl border border-slate-200 px-4 py-3"
@@ -192,7 +384,7 @@ export default function ConciliacaoFinanceiraPage() {
                 value={busca}
                 onChange={(evento) => setBusca(evento.target.value)}
               />
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {(["Todos", "Pendentes", "Conciliados"] as const).map(
                   (opcao) => (
                     <button
@@ -219,7 +411,9 @@ export default function ConciliacaoFinanceiraPage() {
           </section>
 
           <section className="overflow-hidden rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-xl font-bold">Movimentos para conciliar</h2>
+            <h2 className="mb-4 text-xl font-bold">
+              Movimentos para conciliar
+            </h2>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1050px] text-left text-sm">
                 <thead className="bg-slate-50 text-slate-600">
@@ -293,7 +487,9 @@ export default function ConciliacaoFinanceiraPage() {
                 </p>
               )}
               {carregando && (
-                <p className="py-10 text-center text-slate-500">Carregando...</p>
+                <p className="py-10 text-center text-slate-500">
+                  Carregando...
+                </p>
               )}
             </div>
           </section>
@@ -303,17 +499,20 @@ export default function ConciliacaoFinanceiraPage() {
   );
 }
 
-function Card({
-  titulo,
-  valor,
-}: {
-  titulo: string;
-  valor: string | number;
-}) {
+function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
   return (
     <div className="rounded-2xl bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{titulo}</p>
       <strong className="mt-2 block text-2xl text-slate-950">{valor}</strong>
+    </div>
+  );
+}
+
+function Resumo({ titulo, valor }: { titulo: string; valor: string | number }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <p className="text-xs text-slate-500">{titulo}</p>
+      <strong className="mt-1 block truncate text-slate-900">{valor}</strong>
     </div>
   );
 }
