@@ -133,7 +133,11 @@ const menu = [
     href: "/financeiro/historico",
     perfis: ["Administrador", "Financeiro"],
   },
-
+{
+  nome: "Conciliação Financeira",
+  href: "/financeiro/conciliacao",
+  perfis: ["Administrador", "Financeiro"],
+},
   {
     nome: "Relatórios Comerciais",
     href: "/relatorios-comerciais",
