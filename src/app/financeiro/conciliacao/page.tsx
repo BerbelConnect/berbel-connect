@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { supabase } from "@/lib/supabase";
 import {
   conciliarMovimento,
+  confirmarConciliacaoExtrato,
   desfazerConciliacao,
 } from "@/lib/financeiro/conciliacao";
 import {
@@ -39,6 +40,20 @@ type Conciliacao = {
   usuario_email: string | null;
 };
 
+type LancamentoExtrato = {
+  id: string;
+  numero_linha: number;
+  data_lancamento: string;
+  descricao: string;
+  referencia: string | null;
+  valor: number;
+  movimento_sugerido_id: string | null;
+  movimento_conciliado_id: string | null;
+  status: "Importado" | "Conciliado" | "Ignorado";
+  observacoes_revisao: string | null;
+  created_at: string;
+};
+
 const moeda = (valor: number | null) =>
   Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -50,6 +65,13 @@ const hoje = () => new Date().toISOString().slice(0, 10);
 export default function ConciliacaoFinanceiraPage() {
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
   const [conciliacoes, setConciliacoes] = useState<Conciliacao[]>([]);
+  const [lancamentosExtrato, setLancamentosExtrato] = useState<
+    LancamentoExtrato[]
+  >([]);
+  const [movimentosSelecionados, setMovimentosSelecionados] = useState<
+    Record<string, string>
+  >({});
+  const [aprovandoId, setAprovandoId] = useState("");
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<"Todos" | "Pendentes" | "Conciliados">(
     "Pendentes",
@@ -63,7 +85,8 @@ export default function ConciliacaoFinanceiraPage() {
 
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [movimentosResult, conciliacoesResult] = await Promise.all([
+    const [movimentosResult, conciliacoesResult, lancamentosResult] =
+      await Promise.all([
       supabase
         .from("movimentacoes_financeiras_auditoria")
         .select("*")
@@ -74,7 +97,13 @@ export default function ConciliacaoFinanceiraPage() {
         .select(
           "movimento_id,status,data_conciliacao,referencia,observacoes,usuario_email",
         ),
-    ]);
+      supabase
+        .from("extratos_bancarios_lancamentos")
+        .select(
+          "id,numero_linha,data_lancamento,descricao,referencia,valor,movimento_sugerido_id,movimento_conciliado_id,status,observacoes_revisao,created_at",
+        )
+        .order("created_at", { ascending: false }),
+      ]);
 
     if (movimentosResult.error) {
       alert(movimentosResult.error.message);
@@ -87,11 +116,31 @@ export default function ConciliacaoFinanceiraPage() {
     } else {
       setConciliacoes((conciliacoesResult.data || []) as Conciliacao[]);
     }
+
+    if (lancamentosResult.error) {
+      alert(lancamentosResult.error.message);
+    } else {
+      const recebidos = (lancamentosResult.data || []) as LancamentoExtrato[];
+      setLancamentosExtrato(recebidos);
+      setMovimentosSelecionados((atuais) => {
+        const proximos = { ...atuais };
+        recebidos.forEach((item) => {
+          if (!proximos[item.id] && item.movimento_sugerido_id) {
+            proximos[item.id] = item.movimento_sugerido_id;
+          }
+        });
+        return proximos;
+      });
+    }
     setCarregando(false);
   }, []);
 
   useEffect(() => {
-    carregar();
+    const carregamento = window.setTimeout(() => {
+      void carregar();
+    }, 0);
+
+    return () => window.clearTimeout(carregamento);
   }, [carregar]);
 
   const conciliacaoPorMovimento = useMemo(
@@ -106,6 +155,20 @@ export default function ConciliacaoFinanceiraPage() {
           conciliacaoPorMovimento.get(movimento.id)?.status !== "Conciliado",
       ),
     [conciliacaoPorMovimento, movimentos],
+  );
+
+  const movimentoPorId = useMemo(
+    () => new Map(movimentos.map((item) => [item.id, item])),
+    [movimentos],
+  );
+
+  const sugestoesPendentes = useMemo(
+    () =>
+      lancamentosExtrato.filter(
+        (item) =>
+          item.status === "Importado" && !item.movimento_conciliado_id,
+      ),
+    [lancamentosExtrato],
   );
 
   const linhas = useMemo(() => {
@@ -209,6 +272,39 @@ export default function ConciliacaoFinanceiraPage() {
       `Extrato importado com sucesso: ${linhasValidas.length} lançamento(s).`,
     );
     limparArquivo();
+    carregar();
+  }
+
+  async function aprovarSugestao(lancamento: LancamentoExtrato) {
+    const movimentoId =
+      movimentosSelecionados[lancamento.id] ||
+      lancamento.movimento_sugerido_id ||
+      "";
+    if (!movimentoId) {
+      alert("Selecione um movimento financeiro para aprovar.");
+      return;
+    }
+
+    const observacoes =
+      prompt("Observações da aprovação (opcional)", "") ?? "";
+    setAprovandoId(lancamento.id);
+    try {
+      await confirmarConciliacaoExtrato({
+        lancamentoId: lancamento.id,
+        movimentoId,
+        observacoes,
+      });
+      alert("Sugestão aprovada e movimento conciliado com sucesso.");
+      await carregar();
+    } catch (erro) {
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : "Não foi possível aprovar a sugestão.",
+      );
+    } finally {
+      setAprovandoId("");
+    }
   }
 
   async function conciliar(movimento: Movimento) {
@@ -275,6 +371,107 @@ export default function ConciliacaoFinanceiraPage() {
               }
             />
             <Card titulo="Valor conciliado" valor={moeda(totalConciliado)} />
+          </section>
+
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-1">
+              <h2 className="text-xl font-bold">
+                Aprovar sugestões importadas
+              </h2>
+              <p className="text-sm text-slate-500">
+                Confira o lançamento do extrato e o movimento sugerido antes de
+                confirmar.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1050px] text-left text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="p-3">Data</th>
+                    <th className="p-3">Descrição do extrato</th>
+                    <th className="p-3">Valor</th>
+                    <th className="p-3">Referência</th>
+                    <th className="p-3">Movimento financeiro</th>
+                    <th className="p-3">Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sugestoesPendentes.map((lancamento) => {
+                    const sugerido = lancamento.movimento_sugerido_id
+                      ? movimentoPorId.get(lancamento.movimento_sugerido_id)
+                      : null;
+                    return (
+                      <tr key={lancamento.id} className="border-t">
+                        <td className="p-3">{lancamento.data_lancamento}</td>
+                        <td className="p-3">
+                          <span className="font-medium">
+                            {lancamento.descricao}
+                          </span>
+                          {sugerido && (
+                            <span className="mt-1 block text-xs text-emerald-700">
+                              Correspondência automática encontrada
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-semibold text-blue-700">
+                          {moeda(lancamento.valor)}
+                        </td>
+                        <td className="p-3">
+                          {lancamento.referencia || "—"}
+                        </td>
+                        <td className="p-3">
+                          <select
+                            className="w-full min-w-72 rounded-lg border border-slate-200 px-3 py-2"
+                            value={
+                              movimentosSelecionados[lancamento.id] ||
+                              lancamento.movimento_sugerido_id ||
+                              ""
+                            }
+                            onChange={(evento) =>
+                              setMovimentosSelecionados((atuais) => ({
+                                ...atuais,
+                                [lancamento.id]: evento.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Selecione o movimento</option>
+                            {pendentes.map((movimento) => (
+                              <option key={movimento.id} value={movimento.id}>
+                                {movimento.entidade} ·{" "}
+                                {movimento.data_movimento} ·{" "}
+                                {moeda(movimento.valor)} · {movimento.motivo}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-3">
+                          <button
+                            className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                            disabled={
+                              aprovandoId === lancamento.id ||
+                              !(
+                                movimentosSelecionados[lancamento.id] ||
+                                lancamento.movimento_sugerido_id
+                              )
+                            }
+                            onClick={() => aprovarSugestao(lancamento)}
+                          >
+                            {aprovandoId === lancamento.id
+                              ? "Aprovando..."
+                              : "Aprovar"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {!carregando && sugestoesPendentes.length === 0 && (
+                <p className="py-10 text-center text-slate-500">
+                  Nenhuma sugestão importada aguardando aprovação.
+                </p>
+              )}
+            </div>
           </section>
 
           <section className="rounded-2xl bg-white p-5 shadow-sm">

@@ -12,7 +12,6 @@ export async function conciliarMovimento(input: {
     p_referencia: input.referencia.trim(),
     p_observacoes: input.observacoes?.trim() || null,
   });
-
   if (error) throw new Error(error.message);
   return data;
 }
@@ -25,7 +24,20 @@ export async function desfazerConciliacao(input: {
     p_movimento_id: input.movimentoId,
     p_motivo: input.motivo.trim(),
   });
+  if (error) throw new Error(error.message);
+  return data;
+}
 
+export async function confirmarConciliacaoExtrato(input: {
+  lancamentoId: string;
+  movimentoId?: string | null;
+  observacoes?: string;
+}) {
+  const { data, error } = await supabase.rpc("confirmar_conciliacao_extrato", {
+    p_lancamento_id: input.lancamentoId,
+    p_movimento_id: input.movimentoId || null,
+    p_observacoes: input.observacoes?.trim() || null,
+  });
   if (error) throw new Error(error.message);
   return data;
 }
