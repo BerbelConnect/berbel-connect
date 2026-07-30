@@ -8,6 +8,7 @@ export type ClienteResumo = {
   telefone?: string | null;
   whatsapp?: string | null;
   email?: string | null;
+  observacoes?: string | null;
 };
 
 export type PedidoItemResumo = {

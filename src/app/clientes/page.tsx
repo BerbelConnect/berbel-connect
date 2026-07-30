@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -421,6 +422,13 @@ export default function ClientesPage() {
                         </td>
 
                         <td className="space-x-2 px-4 py-4">
+                          <Link
+                            href={`/clientes/${cliente.id}`}
+                            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+                          >
+                            Ver ficha
+                          </Link>
+
                           <button
                             onClick={() => editarCliente(cliente)}
                             className="rounded-lg border px-3 py-2 hover:bg-slate-50"

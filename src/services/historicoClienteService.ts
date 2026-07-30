@@ -224,6 +224,7 @@ function montarHistoricoCliente(
     telefone: getString(raw.cliente.telefone),
     whatsapp: getString(raw.cliente.whatsapp),
     email: getString(raw.cliente.email),
+    observacoes: getString(raw.cliente.observacoes),
   };
 
   const pedidos = raw.pedidos.map(maparPedido);
@@ -364,7 +365,11 @@ export async function buscarHistoricoCliente(
   clienteId: string
 ): Promise<HistoricoClienteDados> {
   const [clienteResp, pedidosResp, visitasResp, contasReceberResp, comissoesResp] = await Promise.all([
-    supabase.from("clientes").select("id, razao_social, nome_fantasia, cnpj, cidade, estado, telefone, whatsapp, email").eq("id", clienteId).single(),
+    supabase
+      .from("clientes")
+      .select("id, razao_social, nome_fantasia, cnpj, cidade, estado, telefone, whatsapp, email, observacoes")
+      .eq("id", clienteId)
+      .single(),
     supabase
       .from("pedidos")
       .select(`*, pedido_itens(*)`)
