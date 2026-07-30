@@ -23,6 +23,11 @@ const menu = [
     perfis: ["Administrador", "Representante"],
   },
   {
+    nome: "Histórico 360 do Cliente",
+    href: "/clientes/historico-360",
+    perfis: ["Administrador", "Representante"],
+  },
+  {
     nome: "Fornecedores",
     href: "/fornecedores",
     perfis: ["Administrador", "Assistente"],
