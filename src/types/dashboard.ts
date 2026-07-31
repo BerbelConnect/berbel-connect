@@ -1,4 +1,4 @@
-﻿export type DashboardResumo = {
+export type DashboardResumo = {
   totalVendido: number;
   totalComissao: number;
   comissaoRecebida: number;
@@ -74,4 +74,44 @@ export type DashboardComissaoPendenteResumo = {
 export type DashboardRankingItem = {
   nome: string;
   total: number;
+};
+
+// Analytics types for Sprint 18A
+export type DashboardPeriodKey = "today" | "7d" | "30d" | "90d" | "year" | "12m";
+
+export type DashboardPeriodRange = {
+  start: string; // ISO date string (YYYY-MM-DD)
+  end: string; // ISO date string (YYYY-MM-DD)
+};
+
+export type DashboardSalesEvolutionPoint = {
+  period: string; // e.g., '2026-01' or date label
+  valor_vendido: number;
+  comissao_prevista?: number;
+  comissao_recebida?: number;
+};
+
+export type DashboardRepresentadaAnalytics = {
+  empresa: string;
+  faturamento: number;
+  pedidos: number;
+  comissao: number;
+};
+
+export type DashboardVisitsAnalytics = {
+  realizadas: number;
+  atrasadas: number;
+  futuras: number;
+};
+
+export type DashboardFinancialStatusAnalytics = {
+  status: string;
+  total: number;
+};
+
+export type DashboardAnalytics = {
+  salesEvolution: DashboardSalesEvolutionPoint[];
+  representadas: DashboardRepresentadaAnalytics[];
+  visits: DashboardVisitsAnalytics;
+  financialStatus: DashboardFinancialStatusAnalytics[];
 };

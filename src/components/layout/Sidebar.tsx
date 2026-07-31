@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const menu = [
+type MenuItem = {
+  nome: string;
+  href: string;
+  perfis: string[];
+};
+
+const menu: MenuItem[] = [
   {
     nome: "Dashboard",
     href: "/dashboard",
@@ -304,7 +310,7 @@ function SidebarContent({
   carregando: boolean;
   nome: string;
   perfil: string | null;
-  menuFiltrado: any[];
+  menuFiltrado: MenuItem[];
   pathname: string;
   sair: () => void;
   mobile?: boolean;
