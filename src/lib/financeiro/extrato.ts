@@ -8,6 +8,10 @@ export type LinhaExtrato = {
   erro?: string;
   movimentoSugeridoId?: string;
   movimentoSugeridoTexto?: string;
+  regraSugeridaId?: string;
+  regraSugeridaNome?: string;
+  criterioSugestao?: string;
+  confiancaSugestao?: number;
 };
 
 type MovimentoCandidato = {
@@ -16,6 +20,23 @@ type MovimentoCandidato = {
   data_movimento: string;
   valor: number | null;
   motivo: string;
+};
+
+type MovimentoAuditavel = MovimentoCandidato & {
+  registro_id: string;
+  operacao: string;
+  created_at: string;
+};
+
+type RegraCandidata = {
+  id: string;
+  nome: string;
+  termo_descricao: string | null;
+  tipo_movimento: "qualquer" | "contas_pagar" | "contas_receber";
+  tolerancia_valor: number;
+  tolerancia_dias: number;
+  prioridade: number;
+  ativo: boolean;
 };
 
 const normalizar = (valor: string) =>
@@ -151,34 +172,108 @@ const dias = (a: string, b: string) =>
     new Date(`${a}T12:00:00`).getTime() - new Date(`${b}T12:00:00`).getTime(),
   ) / 86400000;
 
+export function filtrarBaixasAtivas(movimentos: MovimentoAuditavel[]) {
+  const estornos = movimentos.filter((item) => item.operacao === "Estorno");
+
+  return movimentos.filter(
+    (movimento) =>
+      movimento.operacao === "Baixa" &&
+      !estornos.some(
+        (estorno) =>
+          estorno.entidade === movimento.entidade &&
+          estorno.registro_id === movimento.registro_id &&
+          new Date(estorno.created_at).getTime() >
+            new Date(movimento.created_at).getTime(),
+      ),
+  );
+}
+
 export function sugerirCorrespondencias(
   linhas: LinhaExtrato[],
   movimentos: MovimentoCandidato[],
+  regras: RegraCandidata[] = [],
 ) {
   const usados = new Set<string>();
   return linhas.map((linha) => {
     if (!linha.valido) return linha;
     const candidatos = movimentos
-      .filter(
-        (movimento) =>
-          !usados.has(movimento.id) &&
-          Math.abs(
-            Math.abs(Number(movimento.valor || 0)) - Math.abs(linha.valor),
-          ) < 0.005 &&
-          dias(movimento.data_movimento, linha.data) <= 3,
-      )
+      .filter((movimento) => !usados.has(movimento.id))
+      .map((movimento) => {
+        const diferencaValor = Math.abs(
+          Math.abs(Number(movimento.valor || 0)) - Math.abs(linha.valor),
+        );
+        const diferencaDias = dias(movimento.data_movimento, linha.data);
+        const regra = regras
+          .filter(
+            (item) =>
+              item.ativo &&
+              (item.tipo_movimento === "qualquer" ||
+                item.tipo_movimento === movimento.entidade) &&
+              (!item.termo_descricao ||
+                normalizar(linha.descricao).includes(
+                  normalizar(item.termo_descricao),
+                )) &&
+              diferencaValor <= Number(item.tolerancia_valor) + 0.0001 &&
+              diferencaDias <= Number(item.tolerancia_dias),
+          )
+          .sort((a, b) => b.prioridade - a.prioridade)[0];
+
+        if (regra) {
+          const proporcaoValor =
+            Number(regra.tolerancia_valor) > 0
+              ? diferencaValor / Number(regra.tolerancia_valor)
+              : 0;
+          const proporcaoDias =
+            Number(regra.tolerancia_dias) > 0
+              ? diferencaDias / Number(regra.tolerancia_dias)
+              : 0;
+          const confianca = Math.max(
+            70,
+            Math.round(100 - proporcaoValor * 15 - proporcaoDias * 15),
+          );
+          return {
+            movimento,
+            regra,
+            diferencaValor,
+            diferencaDias,
+            confianca,
+          };
+        }
+
+        if (diferencaValor < 0.005 && diferencaDias <= 3) {
+          return {
+            movimento,
+            regra: undefined,
+            diferencaValor,
+            diferencaDias,
+            confianca: Math.max(75, 90 - diferencaDias * 5),
+          };
+        }
+
+        return null;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
       .sort(
         (a, b) =>
-          dias(a.data_movimento, linha.data) -
-          dias(b.data_movimento, linha.data),
+          Number(Boolean(b.regra)) - Number(Boolean(a.regra)) ||
+          (b.regra?.prioridade || 0) - (a.regra?.prioridade || 0) ||
+          b.confianca - a.confianca ||
+          a.diferencaValor - b.diferencaValor ||
+          a.diferencaDias - b.diferencaDias,
       );
     const escolhido = candidatos[0];
     if (!escolhido) return linha;
-    usados.add(escolhido.id);
+    usados.add(escolhido.movimento.id);
     return {
       ...linha,
-      movimentoSugeridoId: escolhido.id,
-      movimentoSugeridoTexto: `${escolhido.entidade} · ${escolhido.data_movimento} · ${escolhido.motivo}`,
+      movimentoSugeridoId: escolhido.movimento.id,
+      movimentoSugeridoTexto: `${escolhido.movimento.entidade} · ${escolhido.movimento.data_movimento} · ${escolhido.movimento.motivo}`,
+      regraSugeridaId: escolhido.regra?.id,
+      regraSugeridaNome: escolhido.regra?.nome,
+      criterioSugestao: escolhido.regra
+        ? `Regra: ${escolhido.regra.nome}`
+        : "Valor exato e data em até 3 dias",
+      confiancaSugestao: escolhido.confianca,
     };
   });
 }
