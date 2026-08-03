@@ -14,6 +14,7 @@ type Props = {
 
   onClear?: () => void;
   onExportExcel?: () => void;
+  onExportPdf?: () => void;
   onPrint?: () => void;
 };
 
@@ -24,6 +25,7 @@ export function ReportsFilters({
   onChange,
   onClear,
   onExportExcel,
+  onExportPdf,
   onPrint,
 }: Props) {
   function update<K extends keyof ReportFilters>(
@@ -170,6 +172,13 @@ export function ReportsFilters({
             className="rounded-xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
           >
             Exportar Excel
+          </button>
+          <button
+            type="button"
+            onClick={onExportPdf}
+            className="rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+          >
+            Exportar PDF
           </button>
           <button
             type="button"

@@ -3,6 +3,8 @@ import { exportToExcel } from "./exportExcel";
 import type {
   ClientRankingItem,
   ProductRankingItem,
+  ReportComissao,
+  ReportPedido,
   RepresentadaRankingItem,
 } from "@/types/reports";
 
@@ -17,7 +19,9 @@ export function exportarRelatorioComercialExcel(
   summary: Summary,
   clientes: ClientRankingItem[],
   produtos: ProductRankingItem[],
-  representadas: RepresentadaRankingItem[]
+  representadas: RepresentadaRankingItem[],
+  pedidos: ReportPedido[],
+  comissoes: ReportComissao[],
 ) {
   exportToExcel("Relatorio Comercial", [
     {
@@ -53,6 +57,26 @@ export function exportarRelatorioComercialExcel(
         Representada: item.nome,
         "Valor Base": item.total,
         Comissão: item.comissao,
+      })),
+    },
+    {
+      name: "Pedidos Detalhados",
+      data: pedidos.map((item) => ({
+        Data: item.created_at,
+        Cliente: Array.isArray(item.clientes) ? item.clientes[0]?.razao_social : item.clientes?.razao_social,
+        Status: item.status,
+        Valor: item.valor_total,
+      })),
+    },
+    {
+      name: "Comissões Detalhadas",
+      data: comissoes.map((item) => ({
+        Data: item.created_at,
+        Cliente: Array.isArray(item.clientes) ? item.clientes[0]?.razao_social : item.clientes?.razao_social,
+        Representada: item.empresa,
+        Status: item.status,
+        "Valor Base": item.valor_base,
+        Comissão: item.valor_comissao,
       })),
     },
   ]);
