@@ -14,6 +14,7 @@ import {
   LinhaExtrato,
   sugerirCorrespondencias,
 } from "@/lib/financeiro/extrato";
+import type { RegraConciliacao } from "@/lib/financeiro/regrasConciliacao";
 
 type Movimento = {
   id: string;
@@ -49,6 +50,10 @@ type LancamentoExtrato = {
   valor: number;
   movimento_sugerido_id: string | null;
   movimento_conciliado_id: string | null;
+  regra_sugerida_id: string | null;
+  regra_sugerida_nome: string | null;
+  criterio_sugestao: string | null;
+  confianca_sugestao: number | null;
   status: "Importado" | "Conciliado" | "Ignorado";
   observacoes_revisao: string | null;
   created_at: string;
@@ -64,6 +69,7 @@ const hoje = () => new Date().toISOString().slice(0, 10);
 
 export default function ConciliacaoFinanceiraPage() {
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
+  const [regras, setRegras] = useState<RegraConciliacao[]>([]);
   const [conciliacoes, setConciliacoes] = useState<Conciliacao[]>([]);
   const [lancamentosExtrato, setLancamentosExtrato] = useState<
     LancamentoExtrato[]
@@ -85,7 +91,12 @@ export default function ConciliacaoFinanceiraPage() {
 
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [movimentosResult, conciliacoesResult, lancamentosResult] =
+    const [
+      movimentosResult,
+      conciliacoesResult,
+      lancamentosResult,
+      regrasResult,
+    ] =
       await Promise.all([
       supabase
         .from("movimentacoes_financeiras_auditoria")
@@ -100,9 +111,14 @@ export default function ConciliacaoFinanceiraPage() {
       supabase
         .from("extratos_bancarios_lancamentos")
         .select(
-          "id,numero_linha,data_lancamento,descricao,referencia,valor,movimento_sugerido_id,movimento_conciliado_id,status,observacoes_revisao,created_at",
+          "id,numero_linha,data_lancamento,descricao,referencia,valor,movimento_sugerido_id,movimento_conciliado_id,regra_sugerida_id,regra_sugerida_nome,criterio_sugestao,confianca_sugestao,status,observacoes_revisao,created_at",
         )
         .order("created_at", { ascending: false }),
+      supabase
+        .from("regras_conciliacao_automatica")
+        .select("*")
+        .eq("ativo", true)
+        .order("prioridade", { ascending: false }),
       ]);
 
     if (movimentosResult.error) {
@@ -131,6 +147,11 @@ export default function ConciliacaoFinanceiraPage() {
         });
         return proximos;
       });
+    }
+    if (regrasResult.error) {
+      alert(regrasResult.error.message);
+    } else {
+      setRegras((regrasResult.data || []) as RegraConciliacao[]);
     }
     setCarregando(false);
   }, []);
@@ -223,7 +244,7 @@ export default function ConciliacaoFinanceiraPage() {
       }
       const conteudo = await arquivo.text();
       const lidas = lerCsv(conteudo);
-      setLinhasExtrato(sugerirCorrespondencias(lidas, pendentes));
+      setLinhasExtrato(sugerirCorrespondencias(lidas, pendentes, regras));
       setArquivoHash(await hashArquivo(conteudo));
     } catch (erro) {
       setArquivoHash("");
@@ -255,6 +276,7 @@ export default function ConciliacaoFinanceiraPage() {
       referencia: linha.referencia,
       valor: linha.valor,
       movimento_sugerido_id: linha.movimentoSugeridoId || null,
+      regra_sugerida_id: linha.regraSugeridaId || null,
     }));
     const { error } = await supabase.rpc("importar_extrato_bancario", {
       p_nome_arquivo: arquivoNome,
@@ -409,7 +431,11 @@ export default function ConciliacaoFinanceiraPage() {
                           </span>
                           {sugerido && (
                             <span className="mt-1 block text-xs text-emerald-700">
-                              Correspondência automática encontrada
+                              {lancamento.regra_sugerida_nome
+                                ? `Regra: ${lancamento.regra_sugerida_nome}`
+                                : "Correspondência por valor e data"}
+                              {lancamento.confianca_sugestao !== null &&
+                                ` · ${lancamento.confianca_sugestao}% de confiança`}
                             </span>
                           )}
                         </td>
@@ -533,6 +559,13 @@ export default function ConciliacaoFinanceiraPage() {
                           </td>
                           <td className="p-3">
                             {linha.movimentoSugeridoTexto || "Sem sugestão"}
+                            {linha.movimentoSugeridoId && (
+                              <span className="mt-1 block text-xs text-emerald-700">
+                                {linha.criterioSugestao}
+                                {linha.confiancaSugestao !== undefined &&
+                                  ` · ${linha.confiancaSugestao}% de confiança`}
+                              </span>
+                            )}
                           </td>
                           <td className="p-3">
                             <span
