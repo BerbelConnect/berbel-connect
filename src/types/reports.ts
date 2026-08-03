@@ -40,6 +40,7 @@ export type ReportPedidoItem = {
 
 export type ReportComissao = {
   id: string;
+  pedido_id: string | null;
   created_at: string | null;
   cliente_id: string | null;
   empresa: string | null;

@@ -180,6 +180,19 @@ export default function RelatoriosComerciaisPage() {
     });
   }, [data.comissoes, filters]);
 
+  const pedidoIdsDaRepresentada = useMemo(() => {
+    if (!filters.representada) {
+      return null;
+    }
+
+    return new Set(
+      data.comissoes
+        .filter((comissao) => comissao.empresa === filters.representada)
+        .map((comissao) => comissao.pedido_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+  }, [data.comissoes, filters.representada]);
+
   const pedidosFiltrados = useMemo(() => {
     return data.pedidos.filter((pedido) => {
       const correspondePeriodo = isDateInsidePeriod(
@@ -190,9 +203,12 @@ export default function RelatoriosComerciaisPage() {
       const correspondeCliente =
         !filters.clienteId || pedido.cliente_id === filters.clienteId;
 
-      return correspondePeriodo && correspondeCliente;
+      const correspondeRepresentada =
+        !pedidoIdsDaRepresentada || pedidoIdsDaRepresentada.has(pedido.id);
+
+      return correspondePeriodo && correspondeCliente && correspondeRepresentada;
     });
-  }, [data.pedidos, filters]);
+  }, [data.pedidos, filters, pedidoIdsDaRepresentada]);
 
   const pedidoIdsFiltrados = useMemo(
     () => new Set(pedidosFiltrados.map((pedido) => pedido.id)),
@@ -307,36 +323,26 @@ export default function RelatoriosComerciaisPage() {
 
           <div className="space-y-6 p-4 sm:p-6 xl:p-8">
             <ReportsFilters
-  filters={filters}
-  clientes={data.clientes}
-  representadas={data.representadas}
-  onChange={setFilters}
-  onApply={() => {
-    console.log("Aplicar filtros");
-  }}
-  onClear={() => {
-    setFilters(initialFilters);
-  }}
-  onExportExcel={() => {
-  exportarRelatorioComercialExcel(
-    {
-      pedidos: summary.quantidadePedidos,
-      vendas: summary.totalVendido,
-      comissoes: summary.totalComissao,
-      ticket: summary.ticketMedio,
-    },
-    topClientes,
-    topProdutos,
-    topRepresentadas
-  );
-}}
-  onExportPdf={() => {
-    console.log("Exportar PDF");
-  }}
-  onPrint={() => {
-    window.print();
-  }}
-/>
+              filters={filters}
+              clientes={data.clientes}
+              representadas={data.representadas}
+              onChange={setFilters}
+              onClear={() => setFilters(initialFilters)}
+              onExportExcel={() =>
+                exportarRelatorioComercialExcel(
+                  {
+                    pedidos: summary.quantidadePedidos,
+                    vendas: summary.totalVendido,
+                    comissoes: summary.totalComissao,
+                    ticket: summary.ticketMedio,
+                  },
+                  topClientes,
+                  topProdutos,
+                  topRepresentadas,
+                )
+              }
+              onPrint={() => window.print()}
+            />
 
             {errorMessage ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
