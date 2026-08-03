@@ -1,209 +1,386 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { supabase } from "@/lib/supabase";
 
-function moeda(valor: any) {
-  return Number(valor || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { ReportsFilters } from "@/components/reports/ReportsFilters";
+import { ReportsRanking } from "@/components/reports/ReportsRanking";
+import { ReportsSummaryCards } from "@/components/reports/ReportsSummaryCards";
+import { carregarReportsDashboard } from "@/services/reports/reportsService";
+import { exportarRelatorioComercialExcel } from "@/services/reports/reportsExportService";
+
+import type {
+  ClientRankingItem,
+  ProductRankingItem,
+  ReportComissao,
+  ReportFilters,
+  ReportPedido,
+  ReportSummary,
+  ReportsDashboardData,
+  RepresentadaRankingItem,
+} from "@/types/reports";
+
+const initialFilters: ReportFilters = {
+  period: "12m",
+  startDate: null,
+  endDate: null,
+  clienteId: null,
+  representada: null,
+};
+
+const initialData: ReportsDashboardData = {
+  pedidos: [],
+  itens: [],
+  comissoes: [],
+  clientes: [],
+  representadas: [],
+};
+
+function getClienteNome(
+  clientes: ReportPedido["clientes"] | ReportComissao["clientes"]
+) {
+  if (!clientes) {
+    return "Cliente não informado";
+  }
+
+  if (Array.isArray(clientes)) {
+    return clientes[0]?.razao_social || "Cliente não informado";
+  }
+
+  return clientes.razao_social || "Cliente não informado";
+}
+
+function getPeriodStartDate(filters: ReportFilters) {
+  if (filters.period === "custom") {
+    return filters.startDate
+      ? new Date(`${filters.startDate}T00:00:00`)
+      : null;
+  }
+
+  const date = new Date();
+
+  switch (filters.period) {
+    case "30d":
+      date.setDate(date.getDate() - 30);
+      return date;
+    case "90d":
+      date.setDate(date.getDate() - 90);
+      return date;
+    case "6m":
+      date.setMonth(date.getMonth() - 6);
+      return date;
+    case "12m":
+      date.setMonth(date.getMonth() - 12);
+      return date;
+    default:
+      return null;
+  }
+}
+
+function getPeriodEndDate(filters: ReportFilters) {
+  if (filters.period !== "custom" || !filters.endDate) {
+    return null;
+  }
+
+  return new Date(`${filters.endDate}T23:59:59`);
+}
+
+function isDateInsidePeriod(
+  value: string | null | undefined,
+  filters: ReportFilters
+) {
+  if (!value) {
+    return false;
+  }
+
+  const itemDate = new Date(value);
+
+  if (Number.isNaN(itemDate.getTime())) {
+    return false;
+  }
+
+  const startDate = getPeriodStartDate(filters);
+  const endDate = getPeriodEndDate(filters);
+
+  if (startDate && itemDate < startDate) {
+    return false;
+  }
+
+  if (endDate && itemDate > endDate) {
+    return false;
+  }
+
+  return true;
 }
 
 export default function RelatoriosComerciaisPage() {
-  const [pedidos, setPedidos] = useState<any[]>([]);
-  const [itens, setItens] = useState<any[]>([]);
-  const [comissoes, setComissoes] = useState<any[]>([]);
-
-  async function carregarDados() {
-    const pedidosResp = await supabase
-      .from("pedidos")
-      .select("*, clientes(razao_social)")
-      .order("created_at", { ascending: false });
-
-    const itensResp = await supabase
-      .from("pedido_itens")
-      .select("*");
-
-    const comissoesResp = await supabase
-      .from("comissoes_financeiro")
-      .select("*, clientes(razao_social)");
-
-    setPedidos(pedidosResp.data || []);
-    setItens(itensResp.data || []);
-    setComissoes(comissoesResp.data || []);
-  }
+  const [data, setData] = useState<ReportsDashboardData>(initialData);
+  const [filters, setFilters] = useState<ReportFilters>(initialFilters);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    carregarDados();
+    let isMounted = true;
+
+    async function carregarDados() {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const response = await carregarReportsDashboard();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setData(response);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível carregar os relatórios comerciais."
+        );
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void carregarDados();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const totalVendido = pedidos.reduce(
-    (soma, pedido) => soma + Number(pedido.valor_total || 0),
-    0
+  const comissoesFiltradas = useMemo(() => {
+    return data.comissoes.filter((comissao) => {
+      const correspondePeriodo = isDateInsidePeriod(
+        comissao.created_at,
+        filters
+      );
+
+      const correspondeCliente =
+        !filters.clienteId || comissao.cliente_id === filters.clienteId;
+
+      const correspondeRepresentada =
+        !filters.representada || comissao.empresa === filters.representada;
+
+      return (
+        correspondePeriodo &&
+        correspondeCliente &&
+        correspondeRepresentada
+      );
+    });
+  }, [data.comissoes, filters]);
+
+  const pedidosFiltrados = useMemo(() => {
+    return data.pedidos.filter((pedido) => {
+      const correspondePeriodo = isDateInsidePeriod(
+        pedido.created_at,
+        filters
+      );
+
+      const correspondeCliente =
+        !filters.clienteId || pedido.cliente_id === filters.clienteId;
+
+      return correspondePeriodo && correspondeCliente;
+    });
+  }, [data.pedidos, filters]);
+
+  const pedidoIdsFiltrados = useMemo(
+    () => new Set(pedidosFiltrados.map((pedido) => pedido.id)),
+    [pedidosFiltrados]
   );
 
-  const totalComissao = pedidos.reduce(
-    (soma, pedido) => soma + Number(pedido.valor_comissao || 0),
-    0
-  );
+  const itensFiltrados = useMemo(() => {
+    return data.itens.filter(
+      (item) =>
+        item.pedido_id !== null && pedidoIdsFiltrados.has(item.pedido_id)
+    );
+  }, [data.itens, pedidoIdsFiltrados]);
 
-  const ticketMedio = pedidos.length ? totalVendido / pedidos.length : 0;
+  const summary = useMemo<ReportSummary>(() => {
+    const totalVendido = pedidosFiltrados.reduce(
+      (total, pedido) => total + Number(pedido.valor_total || 0),
+      0
+    );
 
-  const topProdutos = useMemo(() => {
-    const mapa = new Map<string, { nome: string; total: number; quantidade: number }>();
+    const totalComissao = comissoesFiltradas.reduce(
+      (total, comissao) => total + Number(comissao.valor_comissao || 0),
+      0
+    );
 
-    itens.forEach((item) => {
-      const nome = item.produto_nome || "Produto não informado";
-      const atual = mapa.get(nome) || { nome, total: 0, quantidade: 0 };
+    return {
+      quantidadePedidos: pedidosFiltrados.length,
+      totalVendido,
+      totalComissao,
+      ticketMedio:
+        pedidosFiltrados.length > 0
+          ? totalVendido / pedidosFiltrados.length
+          : 0,
+    };
+  }, [comissoesFiltradas, pedidosFiltrados]);
 
-      atual.total += Number(item.valor_total || 0);
-      atual.quantidade += Number(item.quantidade || 0);
+  const topClientes = useMemo<ClientRankingItem[]>(() => {
+    const ranking = new Map<string, ClientRankingItem>();
 
-      mapa.set(nome, atual);
+    pedidosFiltrados.forEach((pedido) => {
+      const nome = getClienteNome(pedido.clientes);
+      const itemAtual = ranking.get(nome) ?? {
+        nome,
+        total: 0,
+        pedidos: 0,
+      };
+
+      itemAtual.total += Number(pedido.valor_total || 0);
+      itemAtual.pedidos += 1;
+
+      ranking.set(nome, itemAtual);
     });
 
-    return Array.from(mapa.values())
+    return Array.from(ranking.values())
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
-  }, [itens]);
+  }, [pedidosFiltrados]);
 
-  const topRepresentadas = useMemo(() => {
-    const mapa = new Map<string, { nome: string; total: number; comissao: number }>();
+  const topProdutos = useMemo<ProductRankingItem[]>(() => {
+    const ranking = new Map<string, ProductRankingItem>();
 
-    comissoes.forEach((item) => {
-      const nome = item.empresa || "Sem representada";
-      const atual = mapa.get(nome) || { nome, total: 0, comissao: 0 };
+    itensFiltrados.forEach((item) => {
+      const nome = item.produto_nome || "Produto não informado";
+      const itemAtual = ranking.get(nome) ?? {
+        nome,
+        total: 0,
+        quantidade: 0,
+      };
 
-      atual.total += Number(item.valor_base || 0);
-      atual.comissao += Number(item.valor_comissao || 0);
+      itemAtual.total += Number(item.valor_total || 0);
+      itemAtual.quantidade += Number(item.quantidade || 0);
 
-      mapa.set(nome, atual);
+      ranking.set(nome, itemAtual);
     });
 
-    return Array.from(mapa.values())
+    return Array.from(ranking.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [itensFiltrados]);
+
+  const topRepresentadas = useMemo<RepresentadaRankingItem[]>(() => {
+    const ranking = new Map<string, RepresentadaRankingItem>();
+
+    comissoesFiltradas.forEach((comissao) => {
+      const nome = comissao.empresa || "Sem representada";
+      const itemAtual = ranking.get(nome) ?? {
+        nome,
+        total: 0,
+        comissao: 0,
+      };
+
+      itemAtual.total += Number(comissao.valor_base || 0);
+      itemAtual.comissao += Number(comissao.valor_comissao || 0);
+
+      ranking.set(nome, itemAtual);
+    });
+
+    return Array.from(ranking.values())
       .sort((a, b) => b.comissao - a.comissao)
       .slice(0, 10);
-  }, [comissoes]);
-
-  const topClientes = useMemo(() => {
-    const mapa = new Map<string, { nome: string; total: number; pedidos: number }>();
-
-    pedidos.forEach((pedido) => {
-      const nome = pedido.clientes?.razao_social || "Cliente não informado";
-      const atual = mapa.get(nome) || { nome, total: 0, pedidos: 0 };
-
-      atual.total += Number(pedido.valor_total || 0);
-      atual.pedidos += 1;
-
-      mapa.set(nome, atual);
-    });
-
-    return Array.from(mapa.values())
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [pedidos]);
+  }, [comissoesFiltradas]);
 
   return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
         <Sidebar />
 
-        <section className="flex-1">
-          <PageHeader titulo="Relatórios Comerciais" subtitulo="Berbel Connect" />
+        <section className="min-w-0 flex-1">
+          <PageHeader
+            titulo="Relatórios Comerciais"
+            subtitulo="Berbel Connect"
+          />
 
-          <div className="p-8">
-            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-              <Card titulo="Pedidos" valor={pedidos.length} />
-              <Card titulo="Vendas" valor={moeda(totalVendido)} />
-              <Card titulo="Comissões" valor={moeda(totalComissao)} />
-              <Card titulo="Ticket médio" valor={moeda(ticketMedio)} />
-            </div>
+          <div className="space-y-6 p-4 sm:p-6 xl:p-8">
+            <ReportsFilters
+  filters={filters}
+  clientes={data.clientes}
+  representadas={data.representadas}
+  onChange={setFilters}
+  onApply={() => {
+    console.log("Aplicar filtros");
+  }}
+  onClear={() => {
+    setFilters(initialFilters);
+  }}
+  onExportExcel={() => {
+  exportarRelatorioComercialExcel(
+    {
+      pedidos: summary.quantidadePedidos,
+      vendas: summary.totalVendido,
+      comissoes: summary.totalComissao,
+      ticket: summary.ticketMedio,
+    },
+    topClientes,
+    topProdutos,
+    topRepresentadas
+  );
+}}
+  onExportPdf={() => {
+    console.log("Exportar PDF");
+  }}
+  onPrint={() => {
+    window.print();
+  }}
+/>
 
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-              <Ranking titulo="Top clientes" dados={topClientes} tipo="clientes" />
-              <Ranking titulo="Top produtos" dados={topProdutos} tipo="produtos" />
-              <Ranking titulo="Top representadas" dados={topRepresentadas} tipo="representadas" />
-            </div>
+            {errorMessage ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            {isLoading ? (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="h-32 animate-pulse rounded-2xl bg-white shadow-sm"
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <ReportsSummaryCards summary={summary} />
+
+                <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-3">
+                  <ReportsRanking
+                    titulo="Top clientes"
+                    tipo="clientes"
+                    dados={topClientes}
+                  />
+
+                  <ReportsRanking
+                    titulo="Top produtos"
+                    tipo="produtos"
+                    dados={topProdutos}
+                  />
+
+                  <ReportsRanking
+                    titulo="Top representadas"
+                    tipo="representadas"
+                    dados={topRepresentadas}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </section>
       </div>
     </main>
-  );
-}
-
-function Ranking({
-  titulo,
-  dados,
-  tipo,
-}: {
-  titulo: string;
-  dados: any[];
-  tipo: string;
-}) {
-  return (
-    <section className="rounded-2xl bg-white p-6 shadow-sm">
-      <h3 className="mb-5 text-xl font-bold text-slate-800">{titulo}</h3>
-
-      <div className="space-y-3">
-        {dados.map((item, index) => (
-          <div key={`${item.nome}-${index}`} className="rounded-xl border p-4">
-            <p className="font-bold text-slate-800">
-              {index + 1}. {item.nome}
-            </p>
-
-            {tipo === "clientes" && (
-              <>
-                <p className="text-sm text-slate-500">
-                  Pedidos: {item.pedidos}
-                </p>
-                <p className="font-semibold text-blue-700">
-                  {moeda(item.total)}
-                </p>
-              </>
-            )}
-
-            {tipo === "produtos" && (
-              <>
-                <p className="text-sm text-slate-500">
-                  Quantidade: {item.quantidade}
-                </p>
-                <p className="font-semibold text-blue-700">
-                  {moeda(item.total)}
-                </p>
-              </>
-            )}
-
-            {tipo === "representadas" && (
-              <>
-                <p className="text-sm text-slate-500">
-                  Valor base: {moeda(item.total)}
-                </p>
-                <p className="font-semibold text-green-700">
-                  Comissão: {moeda(item.comissao)}
-                </p>
-              </>
-            )}
-          </div>
-        ))}
-
-        {dados.length === 0 && (
-          <p className="py-8 text-center text-slate-500">
-            Nenhum dado encontrado.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function Card({ titulo, valor }: { titulo: string; valor: string | number }) {
-  return (
-    <div className="rounded-2xl bg-white p-6 shadow-sm">
-      <p className="text-sm text-slate-500">{titulo}</p>
-      <strong className="mt-2 block text-2xl text-slate-900">{valor}</strong>
-    </div>
   );
 }
