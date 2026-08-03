@@ -15,8 +15,10 @@
 
 ## Validação
 
-1. Abra **Previsão Comercial** na prévia.
-2. Compare o realizado com os Relatórios Comerciais.
-3. Confira as metas e o valor necessário por dia.
-4. Valide o pipeline ponderado e os três cenários.
-5. Confira a tabela por representada.
+1. Execute `supabase/migrations/20260803_20_identificar_representada_comissoes.sql` no SQL Editor.
+2. Confirme os resultados da consulta de verificação ao final do arquivo.
+3. Abra **Previsão Comercial** na prévia.
+4. Compare o realizado com os Relatórios Comerciais.
+5. Confira as metas e o valor necessário por dia.
+6. Valide o pipeline ponderado e os três cenários.
+7. Confira se a tabela separa as comissões por representada.
