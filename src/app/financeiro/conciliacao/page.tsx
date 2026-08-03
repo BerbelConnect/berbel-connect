@@ -121,14 +121,26 @@ export default function ConciliacaoFinanceiraPage() {
         .order("prioridade", { ascending: false }),
       ]);
 
+    const movimentosAtivos = movimentosResult.error
+      ? []
+      : (filtrarBaixasAtivas(
+          (movimentosResult.data || []) as Movimento[],
+        ) as Movimento[]);
+    const idsConciliados = new Set(
+      ((conciliacoesResult.data || []) as Conciliacao[])
+        .filter((item) => item.status === "Conciliado")
+        .map((item) => item.movimento_id),
+    );
+    const idsDisponiveis = new Set(
+      movimentosAtivos
+        .filter((item) => !idsConciliados.has(item.id))
+        .map((item) => item.id),
+    );
+
     if (movimentosResult.error) {
       alert(movimentosResult.error.message);
     } else {
-      setMovimentos(
-        filtrarBaixasAtivas(
-          (movimentosResult.data || []) as Movimento[],
-        ) as Movimento[],
-      );
+      setMovimentos(movimentosAtivos);
     }
 
     if (conciliacoesResult.error) {
@@ -145,8 +157,17 @@ export default function ConciliacaoFinanceiraPage() {
       setMovimentosSelecionados((atuais) => {
         const proximos = { ...atuais };
         recebidos.forEach((item) => {
-          if (!proximos[item.id] && item.movimento_sugerido_id) {
+          if (
+            !proximos[item.id] &&
+            item.movimento_sugerido_id &&
+            idsDisponiveis.has(item.movimento_sugerido_id)
+          ) {
             proximos[item.id] = item.movimento_sugerido_id;
+          } else if (
+            proximos[item.id] &&
+            !idsDisponiveis.has(proximos[item.id])
+          ) {
+            delete proximos[item.id];
           }
         });
         return proximos;
@@ -183,8 +204,8 @@ export default function ConciliacaoFinanceiraPage() {
   );
 
   const movimentoPorId = useMemo(
-    () => new Map(movimentos.map((item) => [item.id, item])),
-    [movimentos],
+    () => new Map(pendentes.map((item) => [item.id, item])),
+    [pendentes],
   );
 
   const sugestoesPendentes = useMemo(
@@ -426,6 +447,10 @@ export default function ConciliacaoFinanceiraPage() {
                     const sugerido = lancamento.movimento_sugerido_id
                       ? movimentoPorId.get(lancamento.movimento_sugerido_id)
                       : null;
+                    const movimentoSelecionado =
+                      movimentosSelecionados[lancamento.id] ||
+                      (sugerido ? lancamento.movimento_sugerido_id : "") ||
+                      "";
                     return (
                       <tr key={lancamento.id} className="border-t">
                         <td className="p-3">{lancamento.data_lancamento}</td>
@@ -442,6 +467,12 @@ export default function ConciliacaoFinanceiraPage() {
                                 ` · ${lancamento.confianca_sugestao}% de confiança`}
                             </span>
                           )}
+                          {lancamento.movimento_sugerido_id && !sugerido && (
+                            <span className="mt-1 block text-xs text-amber-700">
+                              Sugestão indisponível: movimento estornado ou já
+                              conciliado
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 font-semibold text-blue-700">
                           {moeda(lancamento.valor)}
@@ -453,9 +484,7 @@ export default function ConciliacaoFinanceiraPage() {
                           <select
                             className="w-full min-w-72 rounded-lg border border-slate-200 px-3 py-2"
                             value={
-                              movimentosSelecionados[lancamento.id] ||
-                              lancamento.movimento_sugerido_id ||
-                              ""
+                              movimentoSelecionado
                             }
                             onChange={(evento) =>
                               setMovimentosSelecionados((atuais) => ({
@@ -479,10 +508,7 @@ export default function ConciliacaoFinanceiraPage() {
                             className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
                             disabled={
                               aprovandoId === lancamento.id ||
-                              !(
-                                movimentosSelecionados[lancamento.id] ||
-                                lancamento.movimento_sugerido_id
-                              )
+                              !movimentoSelecionado
                             }
                             onClick={() => aprovarSugestao(lancamento)}
                           >
