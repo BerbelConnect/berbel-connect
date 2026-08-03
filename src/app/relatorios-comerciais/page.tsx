@@ -5,10 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ReportsFilters } from "@/components/reports/ReportsFilters";
+import { ReportsDetailTables } from "@/components/reports/ReportsDetailTables";
 import { ReportsRanking } from "@/components/reports/ReportsRanking";
 import { ReportsSummaryCards } from "@/components/reports/ReportsSummaryCards";
 import { carregarReportsDashboard } from "@/services/reports/reportsService";
 import { exportarRelatorioComercialExcel } from "@/services/reports/reportsExportService";
+import { exportarRelatorioComercialPdf } from "@/services/reports/exportPdf";
 
 import type {
   ClientRankingItem,
@@ -339,7 +341,23 @@ export default function RelatoriosComerciaisPage() {
                   topClientes,
                   topProdutos,
                   topRepresentadas,
+                  pedidosFiltrados,
+                  comissoesFiltradas,
                 )
+              }
+              onExportPdf={() =>
+                exportarRelatorioComercialPdf({
+                  summary,
+                  filters,
+                  clienteNome:
+                    data.clientes.find((cliente) => cliente.id === filters.clienteId)
+                      ?.razao_social || "Todos",
+                  pedidos: pedidosFiltrados,
+                  comissoes: comissoesFiltradas,
+                  clientes: topClientes,
+                  produtos: topProdutos,
+                  representadas: topRepresentadas,
+                })
               }
               onPrint={() => window.print()}
             />
@@ -382,6 +400,11 @@ export default function RelatoriosComerciaisPage() {
                     dados={topRepresentadas}
                   />
                 </div>
+
+                <ReportsDetailTables
+                  pedidos={pedidosFiltrados}
+                  comissoes={comissoesFiltradas}
+                />
               </>
             )}
           </div>
