@@ -9,11 +9,13 @@ import {
   desfazerConciliacao,
 } from "@/lib/financeiro/conciliacao";
 import {
+  filtrarBaixasAtivas,
   hashArquivo,
   lerCsv,
   LinhaExtrato,
   sugerirCorrespondencias,
 } from "@/lib/financeiro/extrato";
+import type { RegraConciliacao } from "@/lib/financeiro/regrasConciliacao";
 
 type Movimento = {
   id: string;
@@ -49,6 +51,10 @@ type LancamentoExtrato = {
   valor: number;
   movimento_sugerido_id: string | null;
   movimento_conciliado_id: string | null;
+  regra_sugerida_id: string | null;
+  regra_sugerida_nome: string | null;
+  criterio_sugestao: string | null;
+  confianca_sugestao: number | null;
   status: "Importado" | "Conciliado" | "Ignorado";
   observacoes_revisao: string | null;
   created_at: string;
@@ -64,6 +70,7 @@ const hoje = () => new Date().toISOString().slice(0, 10);
 
 export default function ConciliacaoFinanceiraPage() {
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
+  const [regras, setRegras] = useState<RegraConciliacao[]>([]);
   const [conciliacoes, setConciliacoes] = useState<Conciliacao[]>([]);
   const [lancamentosExtrato, setLancamentosExtrato] = useState<
     LancamentoExtrato[]
@@ -85,12 +92,16 @@ export default function ConciliacaoFinanceiraPage() {
 
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [movimentosResult, conciliacoesResult, lancamentosResult] =
+    const [
+      movimentosResult,
+      conciliacoesResult,
+      lancamentosResult,
+      regrasResult,
+    ] =
       await Promise.all([
       supabase
         .from("movimentacoes_financeiras_auditoria")
         .select("*")
-        .eq("operacao", "Baixa")
         .order("created_at", { ascending: false }),
       supabase
         .from("conciliacoes_financeiras")
@@ -100,15 +111,36 @@ export default function ConciliacaoFinanceiraPage() {
       supabase
         .from("extratos_bancarios_lancamentos")
         .select(
-          "id,numero_linha,data_lancamento,descricao,referencia,valor,movimento_sugerido_id,movimento_conciliado_id,status,observacoes_revisao,created_at",
+          "id,numero_linha,data_lancamento,descricao,referencia,valor,movimento_sugerido_id,movimento_conciliado_id,regra_sugerida_id,regra_sugerida_nome,criterio_sugestao,confianca_sugestao,status,observacoes_revisao,created_at",
         )
         .order("created_at", { ascending: false }),
+      supabase
+        .from("regras_conciliacao_automatica")
+        .select("*")
+        .eq("ativo", true)
+        .order("prioridade", { ascending: false }),
       ]);
+
+    const movimentosAtivos = movimentosResult.error
+      ? []
+      : (filtrarBaixasAtivas(
+          (movimentosResult.data || []) as Movimento[],
+        ) as Movimento[]);
+    const idsConciliados = new Set(
+      ((conciliacoesResult.data || []) as Conciliacao[])
+        .filter((item) => item.status === "Conciliado")
+        .map((item) => item.movimento_id),
+    );
+    const idsDisponiveis = new Set(
+      movimentosAtivos
+        .filter((item) => !idsConciliados.has(item.id))
+        .map((item) => item.id),
+    );
 
     if (movimentosResult.error) {
       alert(movimentosResult.error.message);
     } else {
-      setMovimentos((movimentosResult.data || []) as Movimento[]);
+      setMovimentos(movimentosAtivos);
     }
 
     if (conciliacoesResult.error) {
@@ -125,12 +157,26 @@ export default function ConciliacaoFinanceiraPage() {
       setMovimentosSelecionados((atuais) => {
         const proximos = { ...atuais };
         recebidos.forEach((item) => {
-          if (!proximos[item.id] && item.movimento_sugerido_id) {
+          if (
+            !proximos[item.id] &&
+            item.movimento_sugerido_id &&
+            idsDisponiveis.has(item.movimento_sugerido_id)
+          ) {
             proximos[item.id] = item.movimento_sugerido_id;
+          } else if (
+            proximos[item.id] &&
+            !idsDisponiveis.has(proximos[item.id])
+          ) {
+            delete proximos[item.id];
           }
         });
         return proximos;
       });
+    }
+    if (regrasResult.error) {
+      alert(regrasResult.error.message);
+    } else {
+      setRegras((regrasResult.data || []) as RegraConciliacao[]);
     }
     setCarregando(false);
   }, []);
@@ -158,8 +204,8 @@ export default function ConciliacaoFinanceiraPage() {
   );
 
   const movimentoPorId = useMemo(
-    () => new Map(movimentos.map((item) => [item.id, item])),
-    [movimentos],
+    () => new Map(pendentes.map((item) => [item.id, item])),
+    [pendentes],
   );
 
   const sugestoesPendentes = useMemo(
@@ -223,7 +269,7 @@ export default function ConciliacaoFinanceiraPage() {
       }
       const conteudo = await arquivo.text();
       const lidas = lerCsv(conteudo);
-      setLinhasExtrato(sugerirCorrespondencias(lidas, pendentes));
+      setLinhasExtrato(sugerirCorrespondencias(lidas, pendentes, regras));
       setArquivoHash(await hashArquivo(conteudo));
     } catch (erro) {
       setArquivoHash("");
@@ -255,6 +301,7 @@ export default function ConciliacaoFinanceiraPage() {
       referencia: linha.referencia,
       valor: linha.valor,
       movimento_sugerido_id: linha.movimentoSugeridoId || null,
+      regra_sugerida_id: linha.regraSugeridaId || null,
     }));
     const { error } = await supabase.rpc("importar_extrato_bancario", {
       p_nome_arquivo: arquivoNome,
@@ -400,6 +447,10 @@ export default function ConciliacaoFinanceiraPage() {
                     const sugerido = lancamento.movimento_sugerido_id
                       ? movimentoPorId.get(lancamento.movimento_sugerido_id)
                       : null;
+                    const movimentoSelecionado =
+                      movimentosSelecionados[lancamento.id] ||
+                      (sugerido ? lancamento.movimento_sugerido_id : "") ||
+                      "";
                     return (
                       <tr key={lancamento.id} className="border-t">
                         <td className="p-3">{lancamento.data_lancamento}</td>
@@ -409,7 +460,17 @@ export default function ConciliacaoFinanceiraPage() {
                           </span>
                           {sugerido && (
                             <span className="mt-1 block text-xs text-emerald-700">
-                              Correspondência automática encontrada
+                              {lancamento.regra_sugerida_nome
+                                ? `Regra: ${lancamento.regra_sugerida_nome}`
+                                : "Correspondência por valor e data"}
+                              {lancamento.confianca_sugestao !== null &&
+                                ` · ${lancamento.confianca_sugestao}% de confiança`}
+                            </span>
+                          )}
+                          {lancamento.movimento_sugerido_id && !sugerido && (
+                            <span className="mt-1 block text-xs text-amber-700">
+                              Sugestão indisponível: movimento estornado ou já
+                              conciliado
                             </span>
                           )}
                         </td>
@@ -423,9 +484,7 @@ export default function ConciliacaoFinanceiraPage() {
                           <select
                             className="w-full min-w-72 rounded-lg border border-slate-200 px-3 py-2"
                             value={
-                              movimentosSelecionados[lancamento.id] ||
-                              lancamento.movimento_sugerido_id ||
-                              ""
+                              movimentoSelecionado
                             }
                             onChange={(evento) =>
                               setMovimentosSelecionados((atuais) => ({
@@ -449,10 +508,7 @@ export default function ConciliacaoFinanceiraPage() {
                             className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
                             disabled={
                               aprovandoId === lancamento.id ||
-                              !(
-                                movimentosSelecionados[lancamento.id] ||
-                                lancamento.movimento_sugerido_id
-                              )
+                              !movimentoSelecionado
                             }
                             onClick={() => aprovarSugestao(lancamento)}
                           >
@@ -533,6 +589,13 @@ export default function ConciliacaoFinanceiraPage() {
                           </td>
                           <td className="p-3">
                             {linha.movimentoSugeridoTexto || "Sem sugestão"}
+                            {linha.movimentoSugeridoId && (
+                              <span className="mt-1 block text-xs text-emerald-700">
+                                {linha.criterioSugestao}
+                                {linha.confiancaSugestao !== undefined &&
+                                  ` · ${linha.confiancaSugestao}% de confiança`}
+                              </span>
+                            )}
                           </td>
                           <td className="p-3">
                             <span
