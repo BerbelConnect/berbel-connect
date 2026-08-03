@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { LinhaExtrato, sugerirCorrespondencias } from "./extrato";
+import {
+  filtrarBaixasAtivas,
+  LinhaExtrato,
+  sugerirCorrespondencias,
+} from "./extrato";
 
 const linha: LinhaExtrato = {
   numeroLinha: 2,
@@ -71,5 +75,42 @@ describe("sugerirCorrespondencias", () => {
     expect(resultado.movimentoSugeridoId).toBe("movimento-1");
     expect(resultado.regraSugeridaId).toBeUndefined();
     expect(resultado.criterioSugestao).toContain("Valor exato");
+  });
+});
+
+describe("filtrarBaixasAtivas", () => {
+  it("exclui uma baixa quando existe estorno posterior", () => {
+    const baixa = {
+      ...movimento,
+      registro_id: "conta-1",
+      operacao: "Baixa",
+      created_at: "2026-07-24T10:00:00Z",
+    };
+    const estorno = {
+      ...baixa,
+      id: "estorno-1",
+      operacao: "Estorno",
+      created_at: "2026-07-25T10:00:00Z",
+    };
+
+    expect(filtrarBaixasAtivas([baixa, estorno])).toEqual([]);
+  });
+
+  it("mantém uma nova baixa feita depois do estorno", () => {
+    const estorno = {
+      ...movimento,
+      id: "estorno-1",
+      registro_id: "conta-1",
+      operacao: "Estorno",
+      created_at: "2026-07-25T10:00:00Z",
+    };
+    const novaBaixa = {
+      ...estorno,
+      id: "baixa-2",
+      operacao: "Baixa",
+      created_at: "2026-07-26T10:00:00Z",
+    };
+
+    expect(filtrarBaixasAtivas([estorno, novaBaixa])).toEqual([novaBaixa]);
   });
 });

@@ -22,6 +22,12 @@ type MovimentoCandidato = {
   motivo: string;
 };
 
+type MovimentoAuditavel = MovimentoCandidato & {
+  registro_id: string;
+  operacao: string;
+  created_at: string;
+};
+
 type RegraCandidata = {
   id: string;
   nome: string;
@@ -165,6 +171,22 @@ const dias = (a: string, b: string) =>
   Math.abs(
     new Date(`${a}T12:00:00`).getTime() - new Date(`${b}T12:00:00`).getTime(),
   ) / 86400000;
+
+export function filtrarBaixasAtivas(movimentos: MovimentoAuditavel[]) {
+  const estornos = movimentos.filter((item) => item.operacao === "Estorno");
+
+  return movimentos.filter(
+    (movimento) =>
+      movimento.operacao === "Baixa" &&
+      !estornos.some(
+        (estorno) =>
+          estorno.entidade === movimento.entidade &&
+          estorno.registro_id === movimento.registro_id &&
+          new Date(estorno.created_at).getTime() >
+            new Date(movimento.created_at).getTime(),
+      ),
+  );
+}
 
 export function sugerirCorrespondencias(
   linhas: LinhaExtrato[],

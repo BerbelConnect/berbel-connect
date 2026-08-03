@@ -9,6 +9,7 @@ import {
   desfazerConciliacao,
 } from "@/lib/financeiro/conciliacao";
 import {
+  filtrarBaixasAtivas,
   hashArquivo,
   lerCsv,
   LinhaExtrato,
@@ -101,7 +102,6 @@ export default function ConciliacaoFinanceiraPage() {
       supabase
         .from("movimentacoes_financeiras_auditoria")
         .select("*")
-        .eq("operacao", "Baixa")
         .order("created_at", { ascending: false }),
       supabase
         .from("conciliacoes_financeiras")
@@ -124,7 +124,11 @@ export default function ConciliacaoFinanceiraPage() {
     if (movimentosResult.error) {
       alert(movimentosResult.error.message);
     } else {
-      setMovimentos((movimentosResult.data || []) as Movimento[]);
+      setMovimentos(
+        filtrarBaixasAtivas(
+          (movimentosResult.data || []) as Movimento[],
+        ) as Movimento[],
+      );
     }
 
     if (conciliacoesResult.error) {
