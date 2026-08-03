@@ -104,6 +104,11 @@ const menu: MenuItem[] = [
     perfis: ["Administrador", "Representante"],
   },
   {
+    nome: "Previsão Comercial",
+    href: "/previsao-comercial",
+    perfis: ["Administrador", "Representante"],
+  },
+  {
     nome: "Central de Alertas",
     href: "/alertas",
     perfis: ["Administrador", "Representante", "Financeiro"],
@@ -210,19 +215,21 @@ export function Sidebar() {
   }
 
   useEffect(() => {
-    carregarPerfil();
+    const timer = window.setTimeout(() => void carregarPerfil(), 0);
 
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      carregarPerfil();
+      void carregarPerfil();
     });
 
     return () => {
+      window.clearTimeout(timer);
       listener.subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
-    setMenuMobileAberto(false);
+    const timer = window.setTimeout(() => setMenuMobileAberto(false), 0);
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   const menuFiltrado = useMemo(() => {
