@@ -140,6 +140,11 @@ const menu: MenuItem[] = [
     perfis: ["Administrador", "Financeiro"],
   },
   {
+    nome: "Cobrança de Recebimentos",
+    href: "/financeiro/cobrancas",
+    perfis: ["Administrador", "Financeiro"],
+  },
+  {
     nome: "Relatórios Financeiros",
     href: "/financeiro/relatorios",
     perfis: ["Administrador", "Financeiro"],
