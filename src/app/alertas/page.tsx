@@ -17,6 +17,10 @@ function relacaoNome(value: unknown) {
   if (value && typeof value === "object") return texto((value as Linha).razao_social);
   return null;
 }
+function relacaoEmpresa(value: unknown) {
+  const item = Array.isArray(value) ? value[0] : value;
+  return item && typeof item === "object" ? texto((item as Linha).empresa) : null;
+}
 
 const gravidadeClasses: Record<GravidadeAlerta, string> = {
   Crítico: "border-red-500 bg-red-50 text-red-700",
@@ -43,7 +47,7 @@ export default function AlertasPage() {
     const { data: sessao } = await supabase.auth.getSession();
     const usuarioId = sessao.session?.user.id;
 
-    const [clientes, visitas, receber, pagar, pipeline, comissoes, metas, pedidos, resolvidosResp] = await Promise.all([
+    const [clientes, visitas, receber, pagar, pipeline, comissoes, metas, pedidos, cobrancas, resolvidosResp] = await Promise.all([
       supabase.from("vw_alertas_comerciais").select("*"),
       supabase.from("visitas").select("id, data_visita, clientes(razao_social)").eq("data_visita", hojeIso),
       supabase.from("contas_receber").select("id, descricao, valor, vencimento, status, clientes(razao_social)").neq("status", "Recebido"),
@@ -52,10 +56,11 @@ export default function AlertasPage() {
       supabase.from("comissoes_financeiro").select("id, pedido_id, created_at, cliente_id, empresa, valor_comissao, data_previsao, previsao_recebimento, status").neq("status", "Recebida"),
       supabase.from("metas_comerciais").select("*"),
       supabase.from("pedidos").select("id, created_at, cliente_id, valor_total"),
+      supabase.from("cobrancas_recebimentos").select("id, comissao_id, resultado, promessa_data, promessa_valor, comissoes_financeiro(empresa)").eq("resultado", "Promessa de pagamento").not("promessa_data", "is", null),
       usuarioId ? supabase.from("alertas_resolvidos").select("alerta_chave").eq("usuario_id", usuarioId) : Promise.resolve({ data: [], error: null }),
     ]);
 
-    const falha = [clientes, visitas, receber, pagar, pipeline, comissoes, metas, pedidos, resolvidosResp].find((resp) => resp.error)?.error;
+    const falha = [clientes, visitas, receber, pagar, pipeline, comissoes, metas, pedidos, cobrancas, resolvidosResp].find((resp) => resp.error)?.error;
     if (falha) {
       setErro(falha.message);
       setCarregando(false);
@@ -83,6 +88,7 @@ export default function AlertasPage() {
       comissoes: comissaoRows.map((item) => ({ id: String(item.id), titulo: texto(item.empresa), valor: numero(item.valor_comissao), data: texto(item.data_previsao) || texto(item.previsao_recebimento), status: texto(item.status) })),
       pipeline: ((pipeline.data || []) as Linha[]).map((item) => ({ id: String(item.id), titulo: texto(item.oportunidade), cliente: relacaoNome(item.clientes), data: texto(item.proximo_contato), status: texto(item.status) })),
       metas: fontesMetas,
+      cobrancas: ((cobrancas.data || []) as Linha[]).map((item) => ({ id: String(item.id), titulo: relacaoEmpresa(item.comissoes_financeiro), valor: numero(item.promessa_valor), data: texto(item.promessa_data) })),
     }));
     setResolvidos(new Set(((resolvidosResp.data || []) as Linha[]).map((item) => String(item.alerta_chave))));
     setCarregando(false);

@@ -44,6 +44,7 @@ export function gerarAlertasInteligentes(fontes: {
   comissoes: FonteAlerta[];
   pipeline: FonteAlerta[];
   metas: FonteAlerta[];
+  cobrancas?: FonteAlerta[];
 }, hoje = new Date()): AlertaInteligente[] {
   const alertas: AlertaInteligente[] = [];
 
@@ -93,6 +94,19 @@ export function gerarAlertasInteligentes(fontes: {
       titulo: vencida ? `Comissão vencida há ${Math.abs(dias)} dias` : "Comissão próxima do recebimento",
       detalhe: `${item.titulo || "Representada não informada"} • ${moeda(item.valor)}`,
       href: "/financeiro/comissoes", dataReferencia: item.data,
+    });
+  });
+
+  (fontes.cobrancas || []).forEach((item) => {
+    const dias = diferencaDias(item.data, hoje);
+    if (dias === null || dias > 7) return;
+    const atrasada = dias < 0;
+    alertas.push({
+      chave: `promessa-cobranca:${item.id}:${item.data}`, categoria: "Comissões",
+      gravidade: atrasada ? "Crítico" : dias <= 1 ? "Alto" : "Médio",
+      titulo: atrasada ? `Promessa de pagamento atrasada há ${Math.abs(dias)} dias` : dias === 0 ? "Promessa de pagamento para hoje" : `Promessa de pagamento em ${dias} dias`,
+      detalhe: `${item.titulo || "Representada não informada"} • ${moeda(item.valor)}`,
+      href: "/financeiro/cobrancas", dataReferencia: item.data,
     });
   });
 
