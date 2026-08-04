@@ -120,6 +120,11 @@ const menu: MenuItem[] = [
     perfis: ["Administrador", "Financeiro"],
   },
   {
+    nome: "Painel Executivo Financeiro",
+    href: "/financeiro/painel-executivo",
+    perfis: ["Administrador", "Financeiro"],
+  },
+  {
     nome: "Contas a Receber",
     href: "/financeiro/contas-receber",
     perfis: ["Administrador", "Financeiro"],
