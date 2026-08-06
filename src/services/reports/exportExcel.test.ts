@@ -28,6 +28,8 @@ describe("exportação Excel", () => {
     expect(reopened.getWorksheet("Resumo")?.getCell("B6").numFmt).toBe('"R$" #,##0.00');
     expect(reopened.getWorksheet("Resumo")?.getCell("C6").numFmt).toBe('"R$" #,##0.00');
     expect(reopened.getWorksheet("Resumo")?.getCell("D6").numFmt).toBe('"R$" #,##0.00');
+    expect(reopened.getWorksheet("Resumo")?.getColumn(3).numFmt).toBe('"R$" #,##0.00');
+    expect(reopened.getWorksheet("Resumo")?.getColumn(4).numFmt).toBe('"R$" #,##0.00');
     expect(reopened.getWorksheet("Clientes")?.getCell("A6").value).toBe("Empresa Exemplo");
   });
 });

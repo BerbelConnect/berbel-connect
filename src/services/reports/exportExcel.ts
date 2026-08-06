@@ -65,13 +65,15 @@ function configureSheet(
 
     columns.forEach((column, index) => {
       const values = sheet.data.map((row) => String(row[column] ?? ""));
+      const worksheetColumn = worksheet.getColumn(index + 1);
       const width = Math.min(
         Math.max(column.length, ...values.map((value) => value.length)) + 3,
         40,
       );
-      worksheet.getColumn(index + 1).width = Math.max(width, 15);
+      worksheetColumn.width = Math.max(width, 15);
 
       if (isMoneyColumn(column)) {
+        worksheetColumn.numFmt = MONEY_FORMAT;
         for (let row = 6; row <= worksheet.rowCount; row += 1) {
           worksheet.getCell(row, index + 1).numFmt = MONEY_FORMAT;
         }
