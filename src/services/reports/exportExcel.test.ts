@@ -8,7 +8,7 @@ describe("exportação Excel", () => {
       [
         {
           name: "Resumo",
-          data: [{ Pedidos: 3, "Valor Total": 1250.5 }],
+          data: [{ Pedidos: 3, "Valor Total": 1250.5, Recebida: 0, Vencida: 0 }],
         },
         {
           name: "Clientes",
@@ -26,6 +26,8 @@ describe("exportação Excel", () => {
     expect(reopened.getWorksheet("Resumo")?.getCell("A5").value).toBe("Pedidos");
     expect(reopened.getWorksheet("Resumo")?.getCell("B6").value).toBe(1250.5);
     expect(reopened.getWorksheet("Resumo")?.getCell("B6").numFmt).toBe('"R$" #,##0.00');
+    expect(reopened.getWorksheet("Resumo")?.getCell("C6").numFmt).toBe('"R$" #,##0.00');
+    expect(reopened.getWorksheet("Resumo")?.getCell("D6").numFmt).toBe('"R$" #,##0.00');
     expect(reopened.getWorksheet("Clientes")?.getCell("A6").value).toBe("Empresa Exemplo");
   });
 });

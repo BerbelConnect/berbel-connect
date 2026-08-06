@@ -27,7 +27,7 @@ function columnNames(data: Record<string, unknown>[]) {
 
 function isMoneyColumn(name: string) {
   const normalized = name.toLocaleLowerCase("pt-BR");
-  return ["valor", "venda", "comissão", "ticket", "total", "recebido", "pendente", "vencido", "previsto"]
+  return ["valor", "venda", "comissão", "ticket", "total", "recebid", "pendente", "vencid", "previst"]
     .some((term) => normalized.includes(term));
 }
 
