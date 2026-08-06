@@ -26,7 +26,7 @@ export type ItemCobranca = ComissaoCobranca & {
 };
 
 const normalizar = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-const dataIso = (data: Date) => data.toISOString().slice(0, 10);
+const dataIso = (data: Date) => dataIsoBrasil(data);
 
 export function diasEntre(data: string | null, hoje = dataIso(new Date())) {
   if (!data) return 0;
@@ -62,3 +62,4 @@ export function montarAcompanhamento(comissoes: ComissaoCobranca[], registros: R
     promessasAbertas: registros.filter((item) => item.resultado === "Promessa de pagamento" && item.promessa_data && item.promessa_data >= hoje).length,
   };
 }
+import { dataIsoBrasil } from "../dataBrasil";

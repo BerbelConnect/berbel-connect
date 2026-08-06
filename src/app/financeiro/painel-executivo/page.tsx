@@ -12,9 +12,10 @@ import {
   type ContaExecutiva,
   type PromessaExecutiva,
 } from "@/lib/financeiro/painelExecutivo";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 const moeda = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => dataIsoBrasil();
 const dataBr = (valor?: string | null) => valor ? new Date(`${valor.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "Sem previsão";
 
 export default function PainelExecutivoFinanceiroPage() {

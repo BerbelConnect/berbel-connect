@@ -9,10 +9,11 @@ import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
 import { calcularFechamento, intervaloFechamento, type ComissaoFechamento } from "@/lib/comissoes/fechamento";
 import { descricaoRegraComissao } from "@/lib/comissoes/regras";
 import { exportarFechamentoExcel, exportarFechamentoPdf } from "@/services/comissoes/exportFechamento";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Periodo = "mes" | "30d" | "90d" | "ano" | "custom";
 type BaixaForm = { id: string; data: string; forma: string; motivo: string };
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => dataIsoBrasil();
 const moeda = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (valor: string | null) => valor ? new Date(`${valor.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR") : "—";
 const texto = (valor: unknown) => typeof valor === "string" ? valor.trim() : "";

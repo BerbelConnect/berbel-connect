@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 const statusOpcoes = ["Todos", "Orçamento", "Pedido", "Em produção", "Faturado", "Entregue", "Cancelado"];
 const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
@@ -14,7 +15,7 @@ function moeda(valor: any) {
 }
 
 function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataIsoBrasil();
 }
 
 function dataBr(valor?: string | null) {

@@ -1,4 +1,5 @@
-﻿import { supabase } from "@/lib/supabase";
+﻿import { dataIsoBrasil } from "@/lib/dataBrasil";
+import { supabase } from "@/lib/supabase";
 
 type VisitaRow = {
   id: string;
@@ -9,7 +10,7 @@ type VisitaRow = {
 };
 
 function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataIsoBrasil();
 }
 
 export async function carregarAgendaResumo() {
@@ -58,4 +59,3 @@ export async function carregarVisitasHoje() {
     cliente_nome: visita.clientes?.razao_social || null,
   }));
 }
-

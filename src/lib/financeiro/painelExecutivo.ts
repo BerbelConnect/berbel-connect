@@ -46,9 +46,7 @@ export function calcularResumoPainelExecutivo(
   const receberAberto = receber.filter((item) => pendente(item.status));
   const pagarAberto = pagar.filter((item) => pendente(item.status, "pago"));
   const comissoesAbertas = comissoes.filter((item) => pendente(item.status));
-  const limite = new Date(`${hoje}T12:00:00`);
-  limite.setDate(limite.getDate() + 7);
-  const fim = limite.toISOString().slice(0, 10);
+  const fim = adicionarDiasDataIso(hoje, 7);
   const soma = <T extends { valor: number }>(itens: T[]) =>
     itens.reduce((total, item) => total + Number(item.valor || 0), 0);
 
@@ -76,3 +74,4 @@ export function ordenarPrioridades(comissoes: ComissaoExecutiva[], hoje: string)
     .slice(0, 6)
     .map((item) => ({ ...item, vencida: Boolean(dia(item.previsao) && dia(item.previsao) < hoje) }));
 }
+import { adicionarDiasDataIso } from "../dataBrasil";

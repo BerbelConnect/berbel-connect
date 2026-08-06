@@ -8,6 +8,7 @@ import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 import { gerarPlanoPagamento } from "@/lib/pedidos/condicaoPagamento";
 import { criarPedidoCompleto } from "@/lib/pedidos/criarPedidoCompleto";
 import { cancelarPedido } from "@/lib/pedidos/cancelarPedido";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Cliente = {
   id: string;
@@ -56,7 +57,7 @@ type PedidoForm = {
 };
 
 function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataIsoBrasil();
 }
 
 function formatarMoeda(valor: any) {

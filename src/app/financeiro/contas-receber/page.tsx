@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Cliente = {
   id: string;
@@ -44,7 +45,7 @@ function moeda(valor: any) {
 }
 
 function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataIsoBrasil();
 }
 
 function situacaoConta(conta: any) {

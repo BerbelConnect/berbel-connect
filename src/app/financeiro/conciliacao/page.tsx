@@ -16,6 +16,7 @@ import {
   sugerirCorrespondencias,
 } from "@/lib/financeiro/extrato";
 import type { RegraConciliacao } from "@/lib/financeiro/regrasConciliacao";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Movimento = {
   id: string;
@@ -66,7 +67,7 @@ const moeda = (valor: number | null) =>
     currency: "BRL",
   });
 
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => dataIsoBrasil();
 
 export default function ConciliacaoFinanceiraPage() {
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
