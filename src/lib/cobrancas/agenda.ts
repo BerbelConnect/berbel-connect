@@ -1,4 +1,5 @@
 import type { ItemCobranca, RegistroCobranca } from "./acompanhamento";
+import { adicionarDiasDataIso, dataIsoBrasil } from "../dataBrasil";
 
 export type CompromissoCobranca = {
   chave: string;
@@ -13,7 +14,7 @@ export type CompromissoCobranca = {
   mensagem: string;
 };
 
-const dataIso = (data: Date) => data.toISOString().slice(0, 10);
+const dataIso = (data: Date) => dataIsoBrasil(data);
 const moeda = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (valor: string) => new Date(`${valor}T12:00:00`).toLocaleDateString("pt-BR");
 
@@ -24,8 +25,7 @@ export function mensagemCobranca(empresa: string, valor: number, data: string, p
 }
 
 export function montarAgendaCobrancas(itens: ItemCobranca[], registros: RegistroCobranca[], hoje = dataIso(new Date())) {
-  const limite = new Date(`${hoje}T12:00:00`); limite.setDate(limite.getDate() + 7);
-  const fim = dataIso(limite);
+  const fim = adicionarDiasDataIso(hoje, 7);
   const porId = new Map(itens.map((item) => [item.id, item]));
   const compromissos: CompromissoCobranca[] = [];
 

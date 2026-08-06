@@ -5,13 +5,13 @@ export type ComissaoFechamento = {
   status: string; situacao?: "Aguardando cliente" | "Pendente" | "Vencida" | "Recebida";
 };
 export type ResumoFechamento = { previsto: number; recebido: number; pendente: number; vencido: number };
-const iso = (data: Date) => data.toISOString().slice(0, 10);
+const iso = (data: Date) => dataIsoBrasil(data);
 const normalizar = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 export function intervaloFechamento(periodo: "mes" | "30d" | "90d" | "ano" | "custom", inicio = "", fim = "", agora = new Date()) {
   const final = iso(agora); if (periodo === "custom" && inicio && fim) return { inicio, fim };
   if (periodo === "mes") return { inicio: `${final.slice(0, 7)}-01`, fim: final };
   if (periodo === "ano") return { inicio: `${final.slice(0, 4)}-01-01`, fim: final };
-  const data = new Date(agora); data.setDate(data.getDate() - (periodo === "90d" ? 89 : 29)); return { inicio: iso(data), fim: final };
+  return { inicio: adicionarDiasDataIso(final, -(periodo === "90d" ? 89 : 29)), fim: final };
 }
 export function situacaoComissao(item: ComissaoFechamento, dataAtual = iso(new Date())): "Aguardando cliente" | "Pendente" | "Vencida" | "Recebida" {
   if (["recebida", "recebido", "pago", "paga", "quitado"].includes(normalizar(item.status))) return "Recebida";
@@ -36,3 +36,4 @@ export function calcularFechamento(comissoes: ComissaoFechamento[], inicio: stri
   }
   return { registros, resumo, porEmpresa: [...mapa.values()].sort((a, b) => b.comissao - a.comissao) };
 }
+import { adicionarDiasDataIso, dataIsoBrasil } from "../dataBrasil";

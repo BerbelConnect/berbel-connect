@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { fimMesBrasil, inicioMesBrasil } from "@/lib/dataBrasil";
 
 type ContaReceber = {
   id: string;
@@ -31,17 +32,11 @@ function moeda(valor: number) {
 }
 
 function inicioMes() {
-  const hoje = new Date();
-  return new Date(hoje.getFullYear(), hoje.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
+  return inicioMesBrasil();
 }
 
 function fimMes() {
-  const hoje = new Date();
-  return new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
-    .toISOString()
-    .slice(0, 10);
+  return fimMesBrasil();
 }
 
 export default function FluxoCaixaPage() {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Movimento = {
   id: string;
@@ -178,9 +179,7 @@ export default function HistoricoFinanceiroPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `historico-financeiro-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
+    link.download = `historico-financeiro-${dataIsoBrasil()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }

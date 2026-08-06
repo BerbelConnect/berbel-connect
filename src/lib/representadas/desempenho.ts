@@ -19,7 +19,7 @@ export type DesempenhoRepresentada = {
   projecao: number;
 };
 
-const iso = (data: Date) => data.toISOString().slice(0, 10);
+const iso = (data: Date) => dataIsoBrasil(data);
 const normalizar = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
 export function intervaloPeriodo(periodo: "mes" | "30d" | "90d" | "ano" | "custom", inicio = "", fim = "", hoje = new Date()) {
@@ -28,9 +28,7 @@ export function intervaloPeriodo(periodo: "mes" | "30d" | "90d" | "ano" | "custo
   if (periodo === "mes") return { inicio: `${final.slice(0, 7)}-01`, fim: final };
   if (periodo === "ano") return { inicio: `${final.slice(0, 4)}-01-01`, fim: final };
   const dias = periodo === "90d" ? 89 : 29;
-  const dataInicial = new Date(hoje);
-  dataInicial.setDate(dataInicial.getDate() - dias);
-  return { inicio: iso(dataInicial), fim: final };
+  return { inicio: adicionarDiasDataIso(final, -dias), fim: final };
 }
 
 export function calcularDesempenhoRepresentadas(comissoes: ComissaoRepresentada[], inicio: string, fim: string, hoje = new Date()): { representadas: DesempenhoRepresentada[] } {
@@ -49,11 +47,12 @@ export function calcularDesempenhoRepresentadas(comissoes: ComissaoRepresentada[
     mapa.set(nome, atual);
   }
   const mesAtual = inicio.slice(0, 7) === iso(hoje).slice(0, 7) && fim.slice(0, 7) === iso(hoje).slice(0, 7);
-  const diasDecorridos = Math.max(1, hoje.getDate());
-  const diasMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+  const diasDecorridos = Math.max(1, Number(iso(hoje).slice(8, 10)));
+  const diasMes = Number(fimMesBrasil(hoje).slice(8, 10));
   return { representadas: [...mapa].map(([nome, item]) => ({
     nome, pedidos: item.pedidos, vendas: item.vendas, comissao: item.comissao,
     recebida: item.recebida, pendente: item.pendente,
     projecao: mesAtual ? item.comissao / diasDecorridos * diasMes : item.comissao,
   })).sort((a, b) => b.comissao - a.comissao) };
 }
+import { adicionarDiasDataIso, dataIsoBrasil, fimMesBrasil } from "../dataBrasil";

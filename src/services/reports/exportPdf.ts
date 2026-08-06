@@ -10,6 +10,7 @@ import type {
   ReportSummary,
   RepresentadaRankingItem,
 } from "@/types/reports";
+import { dataIsoBrasil } from "../../lib/dataBrasil";
 
 export type RelatorioComercialPdfData = {
   summary: ReportSummary;
@@ -131,5 +132,5 @@ export function criarRelatorioComercialPdf(data: RelatorioComercialPdfData) {
 }
 
 export function exportarRelatorioComercialPdf(data: RelatorioComercialPdfData) {
-  criarRelatorioComercialPdf(data).save(`Relatorio-Comercial-${new Date().toISOString().slice(0, 10)}.pdf`);
+  criarRelatorioComercialPdf(data).save(`Relatorio-Comercial-${dataIsoBrasil()}.pdf`);
 }

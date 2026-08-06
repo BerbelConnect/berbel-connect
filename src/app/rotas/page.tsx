@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 function diasDesde(data?: string | null) {
   if (!data) return 999;
@@ -15,7 +16,7 @@ function diasDesde(data?: string | null) {
 }
 
 function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataIsoBrasil();
 }
 
 function enderecoCompleto(cliente: any) {

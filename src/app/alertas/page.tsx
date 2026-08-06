@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { supabase } from "@/lib/supabase";
 import { gerarAlertasInteligentes, type AlertaInteligente, type CategoriaAlerta, type GravidadeAlerta } from "@/lib/alertas/gerarAlertas";
 import { calcularProgressoMeta, type MetaComercial, type RegistroMeta } from "@/lib/metas/calculos";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Linha = Record<string, unknown>;
 
@@ -43,7 +44,7 @@ export default function AlertasPage() {
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro(null);
-    const hojeIso = new Date().toISOString().slice(0, 10);
+    const hojeIso = dataIsoBrasil();
     const { data: sessao } = await supabase.auth.getSession();
     const usuarioId = sessao.session?.user.id;
 

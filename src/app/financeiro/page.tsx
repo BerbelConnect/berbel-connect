@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 function moeda(valor: number) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -62,7 +63,7 @@ export default function FinanceiroPage() {
       .from("contas_receber")
       .update({
         status: "Recebido",
-        recebimento: new Date().toISOString().slice(0, 10),
+        recebimento: dataIsoBrasil(),
       })
       .eq("id", id);
 
@@ -75,7 +76,7 @@ export default function FinanceiroPage() {
       .from("contas_pagar")
       .update({
         status: "Pago",
-        pagamento: new Date().toISOString().slice(0, 10),
+        pagamento: dataIsoBrasil(),
       })
       .eq("id", id);
 

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { dataIsoBrasil } from "@/lib/dataBrasil";
 import {
   atualizarPedidoOffline,
   listarPedidosOffline,
@@ -8,7 +9,7 @@ import {
 let sincronizacaoEmAndamento = false;
 
 function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataIsoBrasil();
 }
 
 function numeroEhOffline(numero?: string | null) {

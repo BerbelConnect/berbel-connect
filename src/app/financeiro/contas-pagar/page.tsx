@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
+import { adicionarMesesDataIso, dataIsoBrasil, inicioMesBrasil } from "@/lib/dataBrasil";
 
 type ContaPagar = {
   id?: string;
@@ -40,7 +41,7 @@ const inicial: ContaPagar = {
 
 const recorrenciaInicial: RecorrenciaForm = {
   descricao: "", categoria: "", fornecedor: "", valor_padrao: "", dia_vencimento: "10",
-  data_inicio: new Date().toISOString().slice(0, 10), data_termino: "", forma_pagamento: "",
+  data_inicio: dataIsoBrasil(), data_termino: "", forma_pagamento: "",
   dias_aviso: "5", observacoes: "",
 };
 
@@ -128,7 +129,7 @@ export default function ContasPagarPage() {
       await baixarMovimento({
         tipo: "conta_pagar",
         id: conta.id,
-        data: new Date().toISOString().slice(0, 10),
+        data: dataIsoBrasil(),
         formaPagamento: forma,
         motivo,
       });
@@ -158,8 +159,8 @@ export default function ContasPagarPage() {
 
   useEffect(() => {
     async function iniciar() {
-      const limite = new Date(); limite.setMonth(limite.getMonth() + 12);
-      const { error } = await supabase.rpc("gerar_parcelas_contas_fixas", { p_ate: limite.toISOString().slice(0, 10) });
+      const limite = adicionarMesesDataIso(dataIsoBrasil(), 12);
+      const { error } = await supabase.rpc("gerar_parcelas_contas_fixas", { p_ate: limite });
       if (error) console.error("Não foi possível gerar parcelas recorrentes:", error.message);
       await carregarContas();
     }
@@ -178,8 +179,8 @@ export default function ContasPagarPage() {
       dias_aviso: Number(recorrenciaForm.dias_aviso || 5), observacoes: recorrenciaForm.observacoes,
     });
     if (!error) {
-      const limite = new Date(); limite.setMonth(limite.getMonth() + 12);
-      await supabase.rpc("gerar_parcelas_contas_fixas", { p_ate: limite.toISOString().slice(0, 10) });
+      const limite = adicionarMesesDataIso(dataIsoBrasil(), 12);
+      await supabase.rpc("gerar_parcelas_contas_fixas", { p_ate: limite });
     }
     setSalvandoRecorrencia(false);
     if (error) return alert(error.message);
@@ -188,10 +189,10 @@ export default function ContasPagarPage() {
   }
 
   async function alterarStatusRecorrencia(id: string, status: "Ativa" | "Pausada" | "Encerrada") {
-    const payload = status === "Encerrada" ? { status, data_termino: new Date().toISOString().slice(0, 10) } : { status };
+    const payload = status === "Encerrada" ? { status, data_termino: dataIsoBrasil() } : { status };
     const { error } = await supabase.from("contas_pagar_recorrencias").update(payload).eq("id", id);
     if (error) return alert(error.message);
-    const hojeMes = `${new Date().toISOString().slice(0, 7)}-01`;
+    const hojeMes = inicioMesBrasil();
     const novoStatusParcela = status === "Ativa" ? "Pendente" : status === "Pausada" ? "Pausada" : "Cancelado";
     const statusAtualParcela = status === "Ativa" ? "Pausada" : "Pendente";
     const parcelasResp = await supabase.from("contas_pagar").update({ status: novoStatusParcela })
@@ -205,7 +206,7 @@ export default function ContasPagarPage() {
     if (valor === null) return;
     const novoValor = Number(valor.replace(",", "."));
     if (!Number.isFinite(novoValor) || novoValor < 0) return alert("Informe um valor válido.");
-    const hojeMes = `${new Date().toISOString().slice(0, 7)}-01`;
+    const hojeMes = inicioMesBrasil();
     const { error } = await supabase.from("contas_pagar_recorrencias").update({ valor_padrao: novoValor }).eq("id", recorrencia.id);
     if (error) return alert(error.message);
     const parcelasResp = await supabase.from("contas_pagar").update({ valor: novoValor })
