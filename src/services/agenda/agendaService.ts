@@ -15,10 +15,10 @@ export async function carregarClientes(): Promise<AgendaCliente[]> {
 export async function carregarVisitas(): Promise<AgendaVisita[]> {
   const { data, error } = await supabase
     .from("visitas")
-    .select("*, clientes(razao_social, cidade, estado)")
+    .select("id, cliente_id, data_visita, hora_visita, tipo_contato, bairro, status, resultado, oportunidade, valor_potencial, observacoes, alerta_retorno, pessoa_atendida, proxima_acao, data_retorno, lembrete_em, concluida, clientes(razao_social, cidade, estado)")
     .order("data_visita", { ascending: true });
 
   if (error) throw error;
 
-  return (data ?? []) as AgendaVisita[];
+  return (data ?? []) as unknown as AgendaVisita[];
 }

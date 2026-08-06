@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { AgendaVisita } from "@/types/agenda";
 import { moeda } from "@/lib/agendaHelpers";
 
@@ -73,7 +74,7 @@ export function AgendaTable({
                 onClick={() => onConcluir(visita)}
                 className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
               >
-                Concluir
+                Abrir e registrar resultado
               </button>
             )}
 
@@ -83,6 +84,7 @@ export function AgendaTable({
             >
               {visita.status === "Cancelada" ? "Reabrir" : "Cancelar"}
             </button>
+            <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700">Criar pedido</Link>
           </div>
         </div>
       ))}

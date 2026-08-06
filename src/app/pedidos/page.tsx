@@ -238,6 +238,16 @@ export default function PedidosPage() {
       setProdutos(produtosComFornecedor);
       setPedidos(pedidosResp.data || []);
 
+      const clienteIdDaAgenda = new URLSearchParams(window.location.search).get("cliente_id");
+      const clienteDaAgenda = (clientesResp.data || []).find((cliente) => cliente.id === clienteIdDaAgenda);
+      if (clienteDaAgenda) {
+        setForm((atual) => ({
+          ...atual,
+          cliente_id: clienteDaAgenda.id,
+          condicao_pagamento: clienteDaAgenda.condicao_pagamento_padrao || atual.condicao_pagamento,
+        }));
+      }
+
     } catch (error: any) {
       console.error("Erro ao carregar dados:", error);
 

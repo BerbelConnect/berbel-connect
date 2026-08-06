@@ -101,6 +101,24 @@ export function AgendaForm({
           className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
         />
 
+        <input
+          placeholder="Pessoa atendida"
+          value={form.pessoa_atendida}
+          onChange={(e) => onChange({ ...form, pessoa_atendida: e.target.value })}
+          className="rounded-xl border border-slate-200 px-4 py-3"
+        />
+
+        <input
+          placeholder="Próxima ação"
+          value={form.proxima_acao}
+          onChange={(e) => onChange({ ...form, proxima_acao: e.target.value })}
+          className="rounded-xl border border-slate-200 px-4 py-3"
+        />
+
+        <label className="text-sm font-semibold text-slate-600">Data de retorno<input type="date" value={form.data_retorno} onChange={(e) => onChange({ ...form, data_retorno: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3" /></label>
+
+        <label className="text-sm font-semibold text-slate-600">Lembrete<input type="datetime-local" value={form.lembrete_em} onChange={(e) => onChange({ ...form, lembrete_em: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3" /></label>
+
         <textarea
           placeholder="Observações"
           value={form.observacoes}

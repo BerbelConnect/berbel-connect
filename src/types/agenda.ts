@@ -24,6 +24,11 @@ export type AgendaVisita = {
   valor_potencial: number | null;
   observacoes: string;
   alerta_retorno: boolean;
+  pessoa_atendida?: string | null;
+  proxima_acao?: string | null;
+  data_retorno?: string | null;
+  lembrete_em?: string | null;
+  concluida?: boolean | null;
   clientes?: AgendaVisitaClientesRelation | null;
 };
 
@@ -40,6 +45,22 @@ export type AgendaVisitaFormData = {
   valor_potencial: string;
   observacoes: string;
   alerta_retorno: boolean;
+  pessoa_atendida: string;
+  proxima_acao: string;
+  data_retorno: string;
+  lembrete_em: string;
+};
+
+export type AgendaVisualizacao = "dia" | "semana" | "mes";
+
+export type AgendaResultadoFormData = {
+  pessoa_atendida: string;
+  resultado: string;
+  proxima_acao: string;
+  data_retorno: string;
+  hora_retorno: string;
+  lembrete_em: string;
+  agendar_retorno: boolean;
 };
 
 export type AgendaResumo = {

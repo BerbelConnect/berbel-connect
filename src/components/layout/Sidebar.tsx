@@ -73,13 +73,8 @@ const menu: MenuItem[] = [
 },
 
   {
-    nome: "Agenda Inteligente",
+    nome: "Agenda e Visitas",
     href: "/agenda",
-    perfis: ["Administrador", "Representante", "Assistente"],
-  },
-  {
-    nome: "Visitas",
-    href: "/visitas",
     perfis: ["Administrador", "Representante", "Assistente"],
   },
   {
