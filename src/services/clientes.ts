@@ -36,12 +36,3 @@ export async function atualizarCliente(id: string, cliente: any) {
 
   return data;
 }
-
-export async function excluirCliente(id: string) {
-  const { error } = await supabase
-    .from("clientes")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw error;
-}

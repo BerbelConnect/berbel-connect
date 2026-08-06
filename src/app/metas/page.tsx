@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { supabase } from "@/lib/supabase";
 import { calcularProgressoMeta, type MetaComercial, type RegistroMeta } from "@/lib/metas/calculos";
+import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
 
 type Cliente = { id: string; razao_social: string };
 type Pedido = { id: string; created_at: string; cliente_id: string | null; valor_total: number | null };
@@ -113,10 +114,12 @@ export default function MetasPage() {
     await carregarDados();
   }
 
-  async function excluirMeta(id: string) {
-    if (!confirm("Deseja excluir esta meta?")) return;
-    const { error } = await supabase.from("metas_comerciais").delete().eq("id", id);
-    if (error) return alert(error.message);
+  async function alterarArquivoMeta(meta: MetaComercial) {
+    const arquivar = !meta.arquivada;
+    const motivo = prompt(arquivar ? "Informe o motivo do arquivamento:" : "Informe o motivo da reativação:");
+    if (motivo === null) return;
+    try { await alterarArquivamentoComercial("metas", meta.id, motivo, arquivar); }
+    catch (error) { return alert((error as Error).message); }
     await carregarDados();
   }
 
@@ -168,7 +171,7 @@ export default function MetasPage() {
                   <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${progresso.situacao === "Atingida" ? "bg-emerald-500" : progresso.situacao === "Atrasada" ? "bg-red-500" : "bg-blue-600"}`} style={{ width: `${Math.min(progresso.percentual, 100)}%` }} /></div>
                   <p className="mt-2 text-xs text-slate-500">Ritmo esperado até hoje: {progresso.esperado.toFixed(1)}%</p>
                   {meta.observacoes ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{meta.observacoes}</p> : null}
-                  <div className="mt-4 flex gap-2"><button type="button" onClick={() => editarMeta(meta)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Editar</button><button type="button" onClick={() => void excluirMeta(meta.id)} className="rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700">Excluir</button></div>
+                  <div className="mt-4 flex gap-2"><button type="button" onClick={() => editarMeta(meta)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Editar</button><button type="button" onClick={() => void alterarArquivoMeta(meta)} className={meta.arquivada ? "rounded-lg bg-green-50 px-4 py-2 text-sm font-semibold text-green-700" : "rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700"}>{meta.arquivada ? "Reativar" : "Arquivar"}</button></div>
                 </article>
               ); })}
               {metas.length === 0 ? <p className="py-10 text-center text-slate-500 xl:col-span-2">Nenhuma meta cadastrada.</p> : null}

@@ -10,6 +10,7 @@ export type MetaComercial = {
   representada: string | null;
   observacoes: string | null;
   created_at?: string;
+  arquivada?: boolean;
 };
 
 export type RegistroMeta = {

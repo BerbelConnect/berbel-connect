@@ -6,7 +6,7 @@ type AgendaTableProps = {
   hoje: string;
   onEdit: (visita: AgendaVisita) => void;
   onConcluir: (visita: AgendaVisita) => void;
-  onDelete: (id: string) => void;
+  onArchive: (visita: AgendaVisita) => void;
 };
 
 export function AgendaTable({
@@ -14,7 +14,7 @@ export function AgendaTable({
   hoje,
   onEdit,
   onConcluir,
-  onDelete,
+  onArchive,
 }: AgendaTableProps) {
   return (
     <div className="space-y-4">
@@ -68,7 +68,7 @@ export function AgendaTable({
               Editar
             </button>
 
-            {visita.status !== "Concluída" && (
+            {visita.status !== "Concluída" && visita.status !== "Cancelada" && (
               <button
                 onClick={() => onConcluir(visita)}
                 className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
@@ -78,10 +78,10 @@ export function AgendaTable({
             )}
 
             <button
-              onClick={() => onDelete(visita.id)}
-              className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+              onClick={() => onArchive(visita)}
+              className={visita.status === "Cancelada" ? "rounded-lg bg-green-100 px-3 py-2 text-green-700" : "rounded-lg bg-red-100 px-3 py-2 text-red-700"}
             >
-              Excluir
+              {visita.status === "Cancelada" ? "Reabrir" : "Cancelar"}
             </button>
           </div>
         </div>

@@ -112,8 +112,8 @@ export default function PedidosOfflinePage() {
     window.dispatchEvent(new Event("berbel:pedidos-offline-atualizados"));
   }
 
-  function excluirPedido(idLocal: string) {
-    if (!confirm("Deseja excluir este pedido offline?")) return;
+  function descartarRascunho(idLocal: string) {
+    if (!confirm("Deseja descartar este rascunho salvo somente neste dispositivo?")) return;
 
     removerPedidoOffline(idLocal);
     carregar();
@@ -247,10 +247,10 @@ export default function PedidosOfflinePage() {
                         </button>
 
                         <button
-                          onClick={() => excluirPedido(item.id_local)}
+                          onClick={() => descartarRascunho(item.id_local)}
                           className="rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700"
                         >
-                          Excluir
+                          Descartar rascunho
                         </button>
                       </div>
                     </div>

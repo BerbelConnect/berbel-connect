@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { cancelarPedido } from "@/lib/pedidos/cancelarPedido";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
 
@@ -222,12 +223,12 @@ Berbel Connect
     alert(`Pedido duplicado com sucesso: ${novoNumero}`);
   }
 
-  async function excluirPedido(id?: string) {
+  async function cancelarPedidoConsulta(id?: string) {
     if (!id) return;
-    if (!confirm("Deseja excluir este pedido?")) return;
-
-    const { error } = await supabase.from("pedidos").delete().eq("id", id);
-    if (error) return alert(error.message);
+    const motivo = prompt("Informe o motivo do cancelamento (mínimo de 5 caracteres):");
+    if (motivo === null) return;
+    try { await cancelarPedido(id, motivo); }
+    catch (error) { return alert((error as Error).message); }
 
     carregarDados();
   }
@@ -489,9 +490,7 @@ Berbel Connect
                         WhatsApp
                       </button>
 
-                      <button onClick={() => excluirPedido(pedido.id)} className="rounded-lg bg-red-600 px-4 py-2 text-white">
-                        Excluir
-                      </button>
+                      {pedido.status !== "Cancelado" && <button onClick={() => cancelarPedidoConsulta(pedido.id)} className="rounded-lg bg-red-600 px-4 py-2 text-white">Cancelar pedido</button>}
                     </div>
 
                     {pedidoAberto === pedido.id && (

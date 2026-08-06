@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
 
 type Fornecedor = {
   id?: string;
@@ -115,18 +116,14 @@ export default function FornecedoresPage() {
     carregarFornecedores();
   }
 
-  async function excluirFornecedor(id?: string) {
+  async function alterarArquivoFornecedor(fornecedor: Fornecedor) {
+    const id = fornecedor.id;
     if (!id) return;
-
-    const confirmar = confirm("Deseja excluir este fornecedor?");
-    if (!confirmar) return;
-
-    const { error } = await supabase.from("fornecedores").delete().eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    const arquivar = fornecedor.ativo !== false;
+    const motivo = prompt(arquivar ? "Informe o motivo do arquivamento:" : "Informe o motivo da reativação:");
+    if (motivo === null) return;
+    try { await alterarArquivamentoComercial("fornecedores", id, motivo, arquivar); }
+    catch (error) { return alert((error as Error).message); }
 
     carregarFornecedores();
   }
@@ -258,10 +255,10 @@ export default function FornecedoresPage() {
                           </button>
 
                           <button
-                            onClick={() => excluirFornecedor(fornecedor.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                            onClick={() => alterarArquivoFornecedor(fornecedor)}
+                            className={fornecedor.ativo === false ? "rounded-lg bg-green-100 px-3 py-2 text-green-700" : "rounded-lg bg-red-100 px-3 py-2 text-red-700"}
                           >
-                            Excluir
+                            {fornecedor.ativo === false ? "Reativar" : "Arquivar"}
                           </button>
                         </td>
                       </tr>
