@@ -1,10 +1,10 @@
-import type { AgendaResumo, AgendaVisita } from "@/types/agenda";
-import { hojeISO } from "@/lib/agendaHelpers";
+import type { AgendaResumo, AgendaVisita } from "../../types/agenda";
+import { hojeISO } from "../../lib/agendaHelpers";
 
 export function gerarResumo(visitas: AgendaVisita[]): AgendaResumo {
   const hoje = hojeISO();
 
-  const visitasFiltradas = visitas;
+  const visitasFiltradas = visitas.filter((visita) => visita.status !== "Cancelada");
 
   const hojeCount = visitasFiltradas.filter(
     (v) => v.data_visita === hoje

@@ -13,7 +13,7 @@ import {
   carregarClientes,
   carregarVisitas,
   concluirVisita as concluirVisitaService,
-  excluirVisita as excluirVisitaService,
+  alterarCancelamentoVisita,
   salvarVisita as salvarVisitaService,
   filtrarVisitas,
   gerarResumo,
@@ -105,10 +105,11 @@ export default function AgendaPage() {
     carregarDados();
   }
 
-  async function handleExcluirVisita(id: string) {
-    if (!confirm("Deseja excluir esta visita?")) return;
-
-    const error = await excluirVisitaService(id);
+  async function handleAlterarCancelamento(visita: AgendaVisita) {
+    const cancelar = visita.status !== "Cancelada";
+    const motivo = prompt(cancelar ? "Informe o motivo do cancelamento:" : "Informe o motivo da reabertura:");
+    if (motivo === null) return;
+    const error = await alterarCancelamentoVisita(visita.id, motivo, cancelar);
     if (error) return alert(error.message);
 
     carregarDados();
@@ -159,7 +160,7 @@ export default function AgendaPage() {
                 hoje={hoje}
                 onEdit={handleEditarVisita}
                 onConcluir={handleConcluirVisita}
-                onDelete={handleExcluirVisita}
+                onArchive={handleAlterarCancelamento}
               />
             </section>
           </div>

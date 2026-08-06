@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
 
 type Fornecedor = {
   id: string;
@@ -178,12 +179,14 @@ export default function ProdutosPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function excluirProduto(id?: string) {
+  async function alterarArquivoProduto(produto: { id?: string; ativo?: boolean }) {
+    const id = produto.id;
     if (!id) return;
-    if (!confirm("Deseja excluir este produto?")) return;
-
-    const { error } = await supabase.from("produtos").delete().eq("id", id);
-    if (error) return alert(error.message);
+    const arquivar = produto.ativo !== false;
+    const motivo = prompt(arquivar ? "Informe o motivo do arquivamento:" : "Informe o motivo da reativação:");
+    if (motivo === null) return;
+    try { await alterarArquivamentoComercial("produtos", id, motivo, arquivar); }
+    catch (error) { return alert((error as Error).message); }
 
     carregarDados();
   }
@@ -462,10 +465,10 @@ export default function ProdutosPage() {
                           </button>
 
                           <button
-                            onClick={() => excluirProduto(produto.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                            onClick={() => alterarArquivoProduto(produto)}
+                            className={produto.ativo === false ? "rounded-lg bg-green-100 px-3 py-2 text-green-700" : "rounded-lg bg-red-100 px-3 py-2 text-red-700"}
                           >
-                            Excluir
+                            {produto.ativo === false ? "Reativar" : "Arquivar"}
                           </button>
                         </td>
                       </tr>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
 
 type Representada = {
   id?: string;
@@ -111,16 +112,14 @@ export default function RepresentadasPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function excluirRepresentada(id?: string) {
+  async function alterarArquivoRepresentada(rep: Representada) {
+    const id = rep.id;
     if (!id) return;
-    if (!confirm("Deseja excluir esta representada?")) return;
-
-    const { error } = await supabase
-      .from("representadas")
-      .delete()
-      .eq("id", id);
-
-    if (error) return alert(error.message);
+    const arquivar = rep.ativa;
+    const motivo = prompt(arquivar ? "Informe o motivo do arquivamento:" : "Informe o motivo da reativação:");
+    if (motivo === null) return;
+    try { await alterarArquivamentoComercial("representadas", id, motivo, arquivar); }
+    catch (error) { return alert((error as Error).message); }
 
     carregarRepresentadas();
   }
@@ -378,10 +377,10 @@ export default function RepresentadasPage() {
                           </button>
 
                           <button
-                            onClick={() => excluirRepresentada(rep.id)}
-                            className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                            onClick={() => alterarArquivoRepresentada(rep)}
+                            className={rep.ativa ? "rounded-lg bg-red-100 px-3 py-2 text-red-700" : "rounded-lg bg-green-100 px-3 py-2 text-green-700"}
                           >
-                            Excluir
+                            {rep.ativa ? "Arquivar" : "Reativar"}
                           </button>
                         </td>
                       </tr>

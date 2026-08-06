@@ -1,6 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import type { AgendaVisita, AgendaVisitaFormData } from "@/types/agenda";
+import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
 
 export async function salvarVisita(
   form: AgendaVisitaFormData
@@ -40,7 +41,7 @@ export async function concluirVisita(
   return error;
 }
 
-export async function excluirVisita(id: string): Promise<PostgrestError | null> {
-  const { error } = await supabase.from("visitas").delete().eq("id", id);
-  return error;
+export async function alterarCancelamentoVisita(id: string, motivo: string, cancelar: boolean): Promise<Error | null> {
+  try { await alterarArquivamentoComercial("visitas", id, motivo, cancelar); return null; }
+  catch (error) { return error as Error; }
 }

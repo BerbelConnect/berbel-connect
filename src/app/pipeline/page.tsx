@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
 
 const inicial = {
   cliente_id: "",
@@ -115,15 +116,12 @@ export default function PipelinePage() {
     carregarDados();
   }
 
-  async function excluir(id: string) {
-    if (!confirm("Deseja excluir esta oportunidade?")) return;
-
-    const { error } = await supabase
-      .from("pipeline_comercial")
-      .delete()
-      .eq("id", id);
-
-    if (error) return alert(error.message);
+  async function alterarArquivo(item: { id: string; status?: string }) {
+    const arquivar = item.status !== "Arquivada";
+    const motivo = prompt(arquivar ? "Informe o motivo do arquivamento:" : "Informe o motivo da reabertura:");
+    if (motivo === null) return;
+    try { await alterarArquivamentoComercial("pipeline", item.id, motivo, arquivar); }
+    catch (error) { return alert((error as Error).message); }
     carregarDados();
   }
 
@@ -368,10 +366,10 @@ export default function PipelinePage() {
                               </button>
 
                               <button
-                                onClick={() => excluir(item.id)}
-                                className="rounded-lg bg-red-100 px-2 py-1 text-xs text-red-700"
+                                onClick={() => alterarArquivo(item)}
+                                className={item.status === "Arquivada" ? "rounded-lg bg-green-100 px-2 py-1 text-xs text-green-700" : "rounded-lg bg-red-100 px-2 py-1 text-xs text-red-700"}
                               >
-                                Excluir
+                                {item.status === "Arquivada" ? "Reabrir" : "Arquivar"}
                               </button>
                             </div>
 
