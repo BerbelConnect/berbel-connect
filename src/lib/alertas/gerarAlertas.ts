@@ -21,6 +21,7 @@ export type FonteAlerta = {
   status?: string | null;
   situacao?: string | null;
   detalhe?: string | null;
+  diasAviso?: number | null;
 };
 
 function moeda(valor: number | null | undefined) {
@@ -73,7 +74,8 @@ export function gerarAlertasInteligentes(fontes: {
 
   const adicionarConta = (item: FonteAlerta, tipo: "receber" | "pagar") => {
     const dias = diferencaDias(item.data, hoje);
-    if (dias === null || dias > 7) return;
+    const antecedencia = tipo === "pagar" ? Number(item.diasAviso ?? 7) : 7;
+    if (dias === null || dias > antecedencia) return;
     const vencida = dias < 0;
     alertas.push({
       chave: `conta-${tipo}:${item.id}`, categoria: "Financeiro", gravidade: vencida ? "Crítico" : dias <= 2 ? "Alto" : "Médio",

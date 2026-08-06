@@ -17,6 +17,16 @@ function hojeISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function dataBr(valor?: string | null) {
+  if (!valor) return "Não informada";
+  return new Date(`${valor.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR");
+}
+
+function entregaAtrasada(pedido: any) {
+  if (!pedido.data_entrega_prevista || ["Entregue", "Cancelado"].includes(pedido.status)) return false;
+  return pedido.data_entrega_prevista.slice(0, 10) < hojeISO();
+}
+
 function statusClasse(status: string) {
   if (status === "Entregue") return "bg-green-100 text-green-700";
   if (status === "Faturado") return "bg-blue-100 text-blue-700";
@@ -90,6 +100,7 @@ export default function ConsultaPedidosPage() {
       cliente_id: pedido.cliente_id || "",
       numero: pedido.numero || "",
       data_pedido: pedido.data_pedido || hojeISO(),
+      data_entrega_prevista: pedido.data_entrega_prevista || "",
       status: pedido.status || "Pedido",
       tipo_operacao: pedido.tipo_operacao || "Representação",
       observacoes: pedido.observacoes || "",
@@ -108,6 +119,7 @@ export default function ConsultaPedidosPage() {
         cliente_id: editando.cliente_id,
         numero: editando.numero,
         data_pedido: editando.data_pedido,
+        data_entrega_prevista: editando.data_entrega_prevista || null,
         status: editando.status,
         tipo_operacao: editando.tipo_operacao,
         observacoes: editando.observacoes,
@@ -322,6 +334,14 @@ Berbel Connect
                     className="rounded-xl border border-slate-200 px-4 py-3"
                   />
 
+                  <input
+                    type="date"
+                    value={editando.data_entrega_prevista}
+                    onChange={(e) => setEditando({ ...editando, data_entrega_prevista: e.target.value })}
+                    aria-label="Entrega prevista"
+                    className="rounded-xl border border-slate-200 px-4 py-3"
+                  />
+
                   <select
                     value={editando.status}
                     onChange={(e) => setEditando({ ...editando, status: e.target.value })}
@@ -407,6 +427,18 @@ Berbel Connect
                           Telefone: {pedido.clientes?.telefone || "-"} | WhatsApp: {pedido.clientes?.whatsapp || "-"}
                         </p>
                         <p className="mt-2 text-sm text-slate-600">Tipo: {pedido.tipo_operacao || "-"}</p>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                          <span className="rounded-lg bg-slate-100 px-3 py-2 text-slate-700">
+                            Criado em: <strong>{dataBr(pedido.created_at)}</strong>
+                          </span>
+                          <span className={`rounded-lg px-3 py-2 ${entregaAtrasada(pedido) ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-700"}`}>
+                            Entrega prevista: <strong>{dataBr(pedido.data_entrega_prevista)}</strong>
+                          </span>
+                          {entregaAtrasada(pedido) && (
+                            <span className="rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white">Entrega atrasada</span>
+                          )}
+                        </div>
 
                         <div className="mt-2 flex items-center gap-3">
                           <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasse(pedido.status)}`}>

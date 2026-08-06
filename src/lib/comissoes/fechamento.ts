@@ -1,7 +1,8 @@
 export type ComissaoFechamento = {
   id: string; pedido_id: string | null; created_at: string; empresa: string; cliente: string;
   pedido: string; pedido_status: string; percentual: number; valor_base: number; valor_comissao: number;
-  previsao: string | null; recebimento: string | null; status: string; situacao?: "Pendente" | "Vencida" | "Recebida";
+  previsao: string | null; recebimento: string | null; pagamento_cliente?: string | null; regra_recebimento?: string | null;
+  status: string; situacao?: "Aguardando cliente" | "Pendente" | "Vencida" | "Recebida";
 };
 export type ResumoFechamento = { previsto: number; recebido: number; pendente: number; vencido: number };
 const iso = (data: Date) => data.toISOString().slice(0, 10);
@@ -12,8 +13,9 @@ export function intervaloFechamento(periodo: "mes" | "30d" | "90d" | "ano" | "cu
   if (periodo === "ano") return { inicio: `${final.slice(0, 4)}-01-01`, fim: final };
   const data = new Date(agora); data.setDate(data.getDate() - (periodo === "90d" ? 89 : 29)); return { inicio: iso(data), fim: final };
 }
-export function situacaoComissao(item: ComissaoFechamento, dataAtual = iso(new Date())): "Pendente" | "Vencida" | "Recebida" {
+export function situacaoComissao(item: ComissaoFechamento, dataAtual = iso(new Date())): "Aguardando cliente" | "Pendente" | "Vencida" | "Recebida" {
   if (["recebida", "recebido", "pago", "paga", "quitado"].includes(normalizar(item.status))) return "Recebida";
+  if (!item.previsao && ["solucao", "fibrart"].some((nome) => normalizar(item.empresa).includes(nome))) return "Aguardando cliente";
   if (item.previsao && item.previsao.slice(0, 10) < dataAtual) return "Vencida";
   return "Pendente";
 }
