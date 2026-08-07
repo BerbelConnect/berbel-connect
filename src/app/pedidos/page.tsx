@@ -13,6 +13,7 @@ import {
   tipoGeraContas as tipoGeraFinanceiroVenda,
 } from "@/lib/pedidos/prepararFinanceiroPedido";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
+import { salvarPedidoOffline } from "@/lib/offline/pedidosOffline";
 
 type Cliente = {
   id: string;
@@ -443,12 +444,6 @@ export default function PedidosPage() {
     if (itens.length === 0) return alert("Adicione ao menos um produto.");
     if (!form.data_pedido) return alert("Informe a data do pedido.");
 
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      return alert(
-        "Você está sem internet. Conecte-se para salvar o pedido."
-      );
-    }
-
     setCarregando(true);
 
     try {
@@ -464,13 +459,22 @@ export default function PedidosPage() {
         planoPagamento,
       });
 
-      const resultado = await criarPedidoCompleto({
+      const pedidoCompleto = {
         idempotencyKey: idempotencyKeyRef.current,
         pedido: pedidoPayload,
         itens: itensPayload,
         contasReceber,
         contasPagar,
-      });
+      };
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        salvarPedidoOffline(pedidoCompleto);
+        alert("Pedido salvo neste dispositivo. Ele será sincronizado quando a internet voltar.");
+        limparFormulario();
+        return;
+      }
+
+      const resultado = await criarPedidoCompleto(pedidoCompleto);
 
       alert(`Pedido ${resultado.numero} salvo com sucesso.`);
 
@@ -480,9 +484,27 @@ export default function PedidosPage() {
       console.error("Erro ao salvar pedido:", error);
 
       if (erroDeConexao(error)) {
+        const pedidoPayload = montarPedidoPayload();
+        const itensPayload = montarItensPayload();
+        const { contasReceber, contasPagar } = prepararFinanceiroPedido({
+          status: form.status,
+          tipo: form.tipo,
+          itens: itensPayload,
+          produtos,
+          planoPagamento,
+        });
+
+        salvarPedidoOffline({
+          idempotencyKey: idempotencyKeyRef.current || globalThis.crypto.randomUUID(),
+          pedido: pedidoPayload,
+          itens: itensPayload,
+          contasReceber,
+          contasPagar,
+        });
         alert(
-          "Falha de conexão. O pedido NÃO foi salvo. Verifique sua internet e tente novamente."
+          "A conexão caiu. O pedido foi preservado neste dispositivo e será sincronizado depois."
         );
+        limparFormulario();
         return;
       }
 
@@ -534,9 +556,9 @@ export default function PedidosPage() {
             )}
 
             <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
-              <strong>Salvamento online ativo.</strong> Os pedidos não serão
-              mais salvos offline. Para salvar pedidos, é necessário estar
-              conectado à internet.
+              <strong>Salvamento protegido.</strong> Sem internet, o pedido fica
+              preservado neste dispositivo e é enviado pelo fluxo transacional
+              assim que a conexão voltar.
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
