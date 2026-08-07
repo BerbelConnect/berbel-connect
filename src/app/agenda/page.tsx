@@ -3,22 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AgendaCards, AgendaFilters, AgendaForm, AgendaTable } from "@/components/agenda";
+import { AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
 import type {
   AgendaCliente,
   AgendaVisita,
   AgendaVisitaFormData,
+  AgendaResultadoFormData,
+  AgendaVisualizacao,
 } from "@/types/agenda";
 import {
   carregarClientes,
   carregarVisitas,
-  concluirVisita as concluirVisitaService,
+  registrarResultadoVisita,
   alterarCancelamentoVisita,
   salvarVisita as salvarVisitaService,
   filtrarVisitas,
   gerarResumo,
 } from "@/services/agenda";
 import { hojeISO } from "@/lib/agendaHelpers";
+import { filtrarPorPeriodo } from "@/lib/agendaPeriodo";
 
 const inicial: AgendaVisitaFormData = {
   cliente_id: "",
@@ -32,6 +35,10 @@ const inicial: AgendaVisitaFormData = {
   valor_potencial: "",
   observacoes: "",
   alerta_retorno: false,
+  pessoa_atendida: "",
+  proxima_acao: "",
+  data_retorno: "",
+  lembrete_em: "",
 };
 
 export default function AgendaPage() {
@@ -40,6 +47,9 @@ export default function AgendaPage() {
   const [form, setForm] = useState<AgendaVisitaFormData>(inicial);
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [visualizacao, setVisualizacao] = useState<AgendaVisualizacao>("semana");
+  const [referencia, setReferencia] = useState(hojeISO());
+  const [visitaEmAtendimento, setVisitaEmAtendimento] = useState<AgendaVisita | null>(null);
 
   async function carregarDados() {
     try {
@@ -94,14 +104,22 @@ export default function AgendaPage() {
       valor_potencial: String(visita.valor_potencial || ""),
       observacoes: visita.observacoes || "",
       alerta_retorno: visita.alerta_retorno || false,
+      pessoa_atendida: visita.pessoa_atendida || "",
+      proxima_acao: visita.proxima_acao || "",
+      data_retorno: visita.data_retorno || "",
+      lembrete_em: visita.lembrete_em?.slice(0, 16) || "",
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function handleConcluirVisita(visita: AgendaVisita) {
-    const error = await concluirVisitaService(visita);
+  async function handleRegistrarResultado(formResultado: AgendaResultadoFormData) {
+    if (!visitaEmAtendimento) return;
+    setCarregando(true);
+    const error = await registrarResultadoVisita(visitaEmAtendimento, formResultado);
+    setCarregando(false);
     if (error) return alert(error.message);
+    setVisitaEmAtendimento(null);
     carregarDados();
   }
 
@@ -115,9 +133,14 @@ export default function AgendaPage() {
     carregarDados();
   }
 
-  const visitasFiltradas = useMemo(
+  const visitasPorBusca = useMemo(
     () => filtrarVisitas(visitas, busca),
     [visitas, busca]
+  );
+
+  const visitasFiltradas = useMemo(
+    () => filtrarPorPeriodo(visitasPorBusca, referencia, visualizacao),
+    [visitasPorBusca, referencia, visualizacao]
   );
 
   const resumo = useMemo(() => gerarResumo(visitasFiltradas), [visitasFiltradas]);
@@ -130,7 +153,7 @@ export default function AgendaPage() {
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader titulo="Agenda Inteligente" subtitulo="Berbel Connect" />
+          <PageHeader titulo="Agenda e Visitas" subtitulo="Planeje, realize e registre cada atendimento" />
 
           <div className="p-8">
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
@@ -155,17 +178,22 @@ export default function AgendaPage() {
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <AgendaFilters busca={busca} onBuscaChange={setBusca} />
 
+              <AgendaViewSelector visualizacao={visualizacao} referencia={referencia} onVisualizacao={setVisualizacao} onReferencia={setReferencia} />
+
+              {visualizacao === "mes" && <AgendaCalendar referencia={referencia} visitas={visitasFiltradas} />}
+
               <AgendaTable
                 visitas={visitasFiltradas}
                 hoje={hoje}
                 onEdit={handleEditarVisita}
-                onConcluir={handleConcluirVisita}
+                onConcluir={setVisitaEmAtendimento}
                 onArchive={handleAlterarCancelamento}
               />
             </section>
           </div>
         </section>
       </div>
+      {visitaEmAtendimento && <AgendaResultadoPanel visita={visitaEmAtendimento} salvando={carregando} onClose={() => setVisitaEmAtendimento(null)} onSave={handleRegistrarResultado} />}
     </main>
   );
 }
