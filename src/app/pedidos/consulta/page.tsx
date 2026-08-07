@@ -57,6 +57,7 @@ export default function ConsultaPedidosPage() {
   function exibirMensagem(tipo: MensagemTela["tipo"], texto: string) {
     setMensagem({ tipo, texto });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function carregarDados() {
     const clientesResp = await supabase
