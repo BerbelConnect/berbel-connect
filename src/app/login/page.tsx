@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { prepararCredenciaisLogin } from "@/lib/auth/login";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,13 +14,14 @@ export default function LoginPage() {
   const [carregando, setCarregando] = useState(false);
 
   async function entrar() {
-    if (!email || !senha) return alert("Informe e-mail e senha.");
+    const credenciais = prepararCredenciaisLogin(email, senha);
+    if (credenciais.erro) return alert(credenciais.erro);
 
     setCarregando(true);
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
+      email: credenciais.email,
+      password: credenciais.senha,
     });
 
     setCarregando(false);
