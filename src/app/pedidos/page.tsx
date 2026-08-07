@@ -14,6 +14,11 @@ import {
 } from "@/lib/pedidos/prepararFinanceiroPedido";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
 import { salvarPedidoOffline } from "@/lib/offline/pedidosOffline";
+import {
+  carregarDadosPedidosOffline,
+  salvarDadosPedidosOffline,
+} from "@/lib/offline/dadosPedidosOffline";
+import { carregarPerfilOffline } from "@/lib/auth/perfilOffline";
 
 type Cliente = {
   id: string;
@@ -158,6 +163,18 @@ export default function PedidosPage() {
       const { data: sessao } = await supabase.auth.getSession();
       const email = sessao.session?.user.email;
 
+      if (email && !navigator.onLine) {
+        const dados = carregarDadosPedidosOffline<Cliente, Produto, any>(email);
+        const perfilSalvo = carregarPerfilOffline(email);
+        setAdministrador(normalizarTexto(perfilSalvo?.perfil) === "administrador");
+        if (dados) {
+          setClientes(dados.clientes);
+          setProdutos(dados.produtos);
+          setPedidos(dados.pedidos);
+        }
+        return;
+      }
+
       if (email) {
         const { data: perfilAtual } = await supabase
           .from("perfis_usuarios")
@@ -225,6 +242,14 @@ export default function PedidosPage() {
       setProdutos(produtosComFornecedor);
       setPedidos(pedidosResp.data || []);
 
+      if (email) {
+        salvarDadosPedidosOffline(email, {
+          clientes: clientesResp.data || [],
+          produtos: produtosComFornecedor,
+          pedidos: pedidosResp.data || [],
+        });
+      }
+
       const clienteIdDaAgenda = new URLSearchParams(window.location.search).get("cliente_id");
       const clienteDaAgenda = (clientesResp.data || []).find((cliente) => cliente.id === clienteIdDaAgenda);
       if (clienteDaAgenda) {
@@ -239,9 +264,14 @@ export default function PedidosPage() {
       console.error("Erro ao carregar dados:", error);
 
       if (erroDeConexao(error)) {
-        alert(
-          "Falha de conexão. Verifique sua internet e tente carregar novamente."
-        );
+        const { data: sessao } = await supabase.auth.getSession();
+        const email = sessao.session?.user.email || "";
+        const dados = carregarDadosPedidosOffline<Cliente, Produto, any>(email);
+        if (dados) {
+          setClientes(dados.clientes);
+          setProdutos(dados.produtos);
+          setPedidos(dados.pedidos);
+        }
       } else {
         alert(error?.message || "Erro ao carregar dados.");
       }
