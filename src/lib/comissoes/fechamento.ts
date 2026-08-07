@@ -7,6 +7,11 @@ export type ComissaoFechamento = {
 export type ResumoFechamento = { previsto: number; recebido: number; pendente: number; vencido: number };
 const iso = (data: Date) => dataIsoBrasil(data);
 const normalizar = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+export function dataComissaoBrasil(valor: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return valor;
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime()) ? valor.slice(0, 10) : dataIsoBrasil(data);
+}
 export function intervaloFechamento(periodo: "mes" | "30d" | "90d" | "ano" | "custom", inicio = "", fim = "", agora = new Date()) {
   const final = iso(agora); if (periodo === "custom" && inicio && fim) return { inicio, fim };
   if (periodo === "mes") return { inicio: `${final.slice(0, 7)}-01`, fim: final };
@@ -21,7 +26,8 @@ export function situacaoComissao(item: ComissaoFechamento, dataAtual = iso(new D
 }
 export function calcularFechamento(comissoes: ComissaoFechamento[], inicio: string, fim: string, dataAtual = iso(new Date())) {
   const registros = comissoes.filter((item) => {
-    const data = item.created_at.slice(0, 10); return data >= inicio && data <= fim && normalizar(item.status) !== "cancelada";
+    const data = dataComissaoBrasil(item.created_at);
+    return data >= inicio && data <= fim && !normalizar(item.status).startsWith("cancelad");
   }).map((item) => ({ ...item, situacao: situacaoComissao(item, dataAtual) }));
   const resumo: ResumoFechamento = { previsto: 0, recebido: 0, pendente: 0, vencido: 0 };
   const mapa = new Map<string, { empresa: string; registros: number; valorBase: number; comissao: number; recebida: number; pendente: number; vencida: number }>();
