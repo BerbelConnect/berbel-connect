@@ -11,6 +11,11 @@ import { dataIsoBrasil } from "@/lib/dataBrasil";
 const statusOpcoes = ["Todos", "Orçamento", "Pedido", "Em produção", "Faturado", "Entregue", "Cancelado"];
 const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
 
+type MensagemTela = {
+  tipo: "sucesso" | "erro" | "aviso";
+  texto: string;
+};
+
 function moeda(valor: any) {
   return Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -47,6 +52,11 @@ export default function ConsultaPedidosPage() {
   const [filtroTipo, setFiltroTipo] = useState("Todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState("Todos");
   const [editando, setEditando] = useState<any | null>(null);
+  const [mensagem, setMensagem] = useState<MensagemTela | null>(null);
+
+  function exibirMensagem(tipo: MensagemTela["tipo"], texto: string) {
+    setMensagem({ tipo, texto });
+    window.scrollTo({ top: 0, behavior: "smooth" });
 
   async function carregarDados() {
     const clientesResp = await supabase
@@ -79,8 +89,8 @@ export default function ConsultaPedidosPage() {
       `)
       .order("created_at", { ascending: false });
 
-    if (clientesResp.error) return alert(clientesResp.error.message);
-    if (pedidosResp.error) return alert(pedidosResp.error.message);
+    if (clientesResp.error) return exibirMensagem("erro", clientesResp.error.message);
+    if (pedidosResp.error) return exibirMensagem("erro", pedidosResp.error.message);
 
     setClientes(clientesResp.data || []);
     setPedidos(pedidosResp.data || []);
@@ -92,8 +102,9 @@ export default function ConsultaPedidosPage() {
 
   async function alterarStatus(pedido: any, status: string) {
     const { error } = await supabase.from("pedidos").update({ status }).eq("id", pedido.id);
-    if (error) return alert(error.message);
-    carregarDados();
+    if (error) return exibirMensagem("erro", error.message);
+    await carregarDados();
+    exibirMensagem("sucesso", `Status do pedido alterado para ${status}.`);
   }
 
   function abrirEdicao(pedido: any) {
@@ -113,7 +124,7 @@ export default function ConsultaPedidosPage() {
 
   async function salvarEdicao() {
     if (!editando?.id) return;
-    if (!editando.cliente_id) return alert("Selecione o cliente.");
+    if (!editando.cliente_id) return exibirMensagem("aviso", "Selecione o cliente.");
 
     const { error } = await supabase
       .from("pedidos")
@@ -128,17 +139,17 @@ export default function ConsultaPedidosPage() {
       })
       .eq("id", editando.id);
 
-    if (error) return alert(error.message);
+    if (error) return exibirMensagem("erro", error.message);
 
     setEditando(null);
-    carregarDados();
-    alert("Pedido atualizado com sucesso.");
+    await carregarDados();
+    exibirMensagem("sucesso", "Pedido atualizado com sucesso.");
   }
     function enviarWhatsApp(pedido: any) {
     const numero = pedido.clientes?.whatsapp?.replace(/\D/g, "");
 
     if (!numero) {
-      alert("Cliente sem WhatsApp cadastrado.");
+      exibirMensagem("aviso", "Cliente sem WhatsApp cadastrado.");
       return;
     }
 
@@ -195,7 +206,7 @@ Berbel Connect
       .select()
       .single();
 
-    if (erroPedido) return alert(erroPedido.message);
+    if (erroPedido) return exibirMensagem("erro", erroPedido.message);
 
     const itens = pedido.pedido_itens || [];
 
@@ -216,11 +227,12 @@ Berbel Connect
         lucro_previsto: Number(item.lucro_previsto || 0),
       }));
 
-      await supabase.from("pedido_itens").insert(itensPayload);
+      const { error: erroItens } = await supabase.from("pedido_itens").insert(itensPayload);
+      if (erroItens) return exibirMensagem("erro", `O pedido foi criado, mas ocorreu um erro ao copiar os itens: ${erroItens.message}`);
     }
 
-    carregarDados();
-    alert(`Pedido duplicado com sucesso: ${novoNumero}`);
+    await carregarDados();
+    exibirMensagem("sucesso", `Pedido duplicado com sucesso: ${novoNumero || pedidoCriado.numero}`);
   }
 
   async function cancelarPedidoConsulta(id?: string) {
@@ -228,9 +240,10 @@ Berbel Connect
     const motivo = prompt("Informe o motivo do cancelamento (mínimo de 5 caracteres):");
     if (motivo === null) return;
     try { await cancelarPedido(id, motivo); }
-    catch (error) { return alert((error as Error).message); }
+    catch (error) { return exibirMensagem("erro", (error as Error).message); }
 
-    carregarDados();
+    await carregarDados();
+    exibirMensagem("sucesso", "Pedido cancelado com sucesso.");
   }
 
   const pedidosFiltrados = useMemo(() => {
@@ -293,6 +306,24 @@ Berbel Connect
           <PageHeader titulo="Consulta de Pedidos V3" subtitulo="Berbel Connect" />
 
           <div className="p-8">
+            {mensagem && (
+              <div
+                role="status"
+                className={`mb-6 flex items-center justify-between gap-4 rounded-2xl border px-5 py-4 text-sm font-medium ${
+                  mensagem.tipo === "sucesso"
+                    ? "border-green-200 bg-green-50 text-green-800"
+                    : mensagem.tipo === "erro"
+                      ? "border-red-200 bg-red-50 text-red-800"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}
+              >
+                <span>{mensagem.texto}</span>
+                <button type="button" onClick={() => setMensagem(null)} className="font-semibold underline">
+                  Fechar
+                </button>
+              </div>
+            )}
+
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
               <Card titulo="Pedidos" valor={pedidosFiltrados.length} />
               <Card titulo="Total vendido" valor={moeda(totalPedidos)} />
