@@ -1,31 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-
-const rotasPublicas = ["/login", "/recuperar-senha", "/atualizar-senha"];
-
-const permissoes = [
-  { prefixo: "/dashboard", perfis: ["Administrador", "Representante", "Financeiro", "Assistente"] },
-  { prefixo: "/clientes", perfis: ["Administrador", "Representante", "Assistente"] },
-  { prefixo: "/fornecedores", perfis: ["Administrador", "Assistente"] },
-  { prefixo: "/representadas", perfis: ["Administrador", "Representante", "Assistente"] },
-  { prefixo: "/produtos", perfis: ["Administrador", "Representante", "Assistente"] },
-  { prefixo: "/pedidos", perfis: ["Administrador", "Representante", "Assistente"] },
-  { prefixo: "/agenda", perfis: ["Administrador", "Representante", "Assistente"] },
-  { prefixo: "/visitas", perfis: ["Administrador", "Representante", "Assistente"] },
-  { prefixo: "/rotas", perfis: ["Administrador", "Representante"] },
-  { prefixo: "/pipeline", perfis: ["Administrador", "Representante"] },
-  { prefixo: "/ia-comercial", perfis: ["Administrador", "Representante"] },
-  { prefixo: "/alertas", perfis: ["Administrador", "Representante", "Financeiro"] },
-  { prefixo: "/financeiro", perfis: ["Administrador", "Financeiro"] },
-  { prefixo: "/comissoes", perfis: ["Administrador", "Financeiro"] },
-  { prefixo: "/relatorios-comerciais", perfis: ["Administrador", "Representante"] },
-  { prefixo: "/exportacoes", perfis: ["Administrador", "Financeiro"] },
-  { prefixo: "/usuarios", perfis: ["Administrador"] },
-  { prefixo: "/metas", perfis: ["Administrador", "Representante"] },
-];
+import { decidirAcesso, rotaPublica } from "@/lib/auth/permissoes";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -34,11 +12,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [carregando, setCarregando] = useState(true);
   const [autorizado, setAutorizado] = useState(false);
 
-  const rotaPublica = useMemo(
-    () => rotasPublicas.includes(pathname),
-    [pathname]
-  );
-
   useEffect(() => {
     async function verificar() {
       setCarregando(true);
@@ -46,17 +19,23 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       const { data: sessao } = await supabase.auth.getSession();
       const usuario = sessao.session?.user;
 
-      if (!usuario && !rotaPublica) {
-        router.replace("/login");
+      if (!usuario) {
+        const decisao = decidirAcesso({ pathname, temUsuario: false, perfil: null });
+        if (decisao === "redirecionar-login") {
+          router.replace("/login");
+          return;
+        }
+        setAutorizado(true);
+        setCarregando(false);
         return;
       }
 
-      if (usuario && pathname === "/login") {
+      if (pathname === "/login") {
         router.replace("/dashboard");
         return;
       }
 
-      if (rotaPublica) {
+      if (rotaPublica(pathname)) {
         setAutorizado(true);
         setCarregando(false);
         return;
@@ -68,17 +47,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         .eq("email", usuario?.email)
         .single();
 
-      if (!perfil || !perfil.ativo) {
+      const decisao = decidirAcesso({ pathname, temUsuario: true, perfil });
+
+      if (decisao === "encerrar-sessao") {
         await supabase.auth.signOut();
         router.replace("/login");
         return;
       }
 
-      const regra = permissoes.find((item) =>
-        pathname.startsWith(item.prefixo)
-      );
-
-      if (regra && !regra.perfis.includes(perfil.perfil)) {
+      if (decisao === "redirecionar-dashboard") {
         router.replace("/dashboard");
         return;
       }
@@ -96,7 +73,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [pathname, rotaPublica, router]);
+  }, [pathname, router]);
 
   if (carregando) {
     return (
