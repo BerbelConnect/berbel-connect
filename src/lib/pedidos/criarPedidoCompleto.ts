@@ -32,6 +32,7 @@ export type ContaPagarPedidoCompleto = {
 export type CriarPedidoCompletoInput = {
   idempotencyKey: string;
   pedido: {
+    numero?: string;
     cliente_id: string;
     data_pedido: string;
     data_entrega_prevista: string | null;
