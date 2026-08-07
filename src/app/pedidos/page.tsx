@@ -8,6 +8,10 @@ import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 import { gerarPlanoPagamento } from "@/lib/pedidos/condicaoPagamento";
 import { criarPedidoCompleto } from "@/lib/pedidos/criarPedidoCompleto";
 import { cancelarPedido } from "@/lib/pedidos/cancelarPedido";
+import {
+  prepararFinanceiroPedido,
+  tipoGeraContas as tipoGeraFinanceiroVenda,
+} from "@/lib/pedidos/prepararFinanceiroPedido";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
 
 type Cliente = {
@@ -101,24 +105,6 @@ function normalizarTexto(valor?: string | null) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
-}
-
-function tipoGeraFinanceiroVenda(tipo?: string | null) {
-  const tipoNormalizado = normalizarTexto(tipo);
-
-  return (
-    tipoNormalizado === "revenda" ||
-    tipoNormalizado === "revenda propria" ||
-    tipoNormalizado === "venda direta" ||
-    tipoNormalizado === "venda propria" ||
-    tipoNormalizado === "compra propria"
-  );
-}
-
-function statusGeraFinanceiro(status?: string | null) {
-  const statusNormalizado = normalizarTexto(status);
-
-  return statusNormalizado !== "orcamento" && statusNormalizado !== "cancelado";
 }
 
 const pedidoInicial: PedidoForm = {
@@ -450,35 +436,6 @@ export default function PedidosPage() {
     idempotencyKeyRef.current = null;
   }
 
-  function agruparCustoPorFornecedor(itensFinanceiro: any[]) {
-    const mapa = new Map<
-      string,
-      { fornecedor_id: string | null; fornecedor_nome: string; valor: number }
-    >();
-
-    for (const item of itensFinanceiro || []) {
-      const produto = produtos.find((p) => p.id === item.produto_id);
-
-      const fornecedorId = item.fornecedor_id || produto?.fornecedor_id || null;
-      const fornecedorNome =
-        produto?.fornecedor_nome ||
-        produto?.fornecedores?.nome ||
-        (fornecedorId ? "Fornecedor vinculado" : "Compra própria");
-
-      const chave = fornecedorId || fornecedorNome || "sem-fornecedor";
-      const valorAtual = mapa.get(chave)?.valor || 0;
-      const valorItem = Number(item.valor_custo_total || 0);
-
-      mapa.set(chave, {
-        fornecedor_id: fornecedorId,
-        fornecedor_nome: fornecedorNome,
-        valor: valorAtual + valorItem,
-      });
-    }
-
-    return Array.from(mapa.values()).filter((grupo) => grupo.valor > 0);
-  }
-
   async function salvarPedido() {
     if (carregando) return;
 
@@ -499,20 +456,13 @@ export default function PedidosPage() {
 
       const pedidoPayload = montarPedidoPayload();
       const itensPayload = montarItensPayload();
-      const geraFinanceiro = statusGeraFinanceiro(form.status);
-      const venda = tipoGeraFinanceiroVenda(form.tipo);
-      const contasReceber = geraFinanceiro && venda
-        ? planoPagamento.parcelas.map((parcela) => ({
-            numero: parcela.numero,
-            total_parcelas: parcela.totalParcelas,
-            prazo_dias: parcela.prazoDias,
-            vencimento: parcela.vencimento,
-            valor: parcela.valor,
-          }))
-        : [];
-      const contasPagar = geraFinanceiro && venda
-        ? agruparCustoPorFornecedor(itensPayload)
-        : [];
+      const { contasReceber, contasPagar } = prepararFinanceiroPedido({
+        status: form.status,
+        tipo: form.tipo,
+        itens: itensPayload,
+        produtos,
+        planoPagamento,
+      });
 
       const resultado = await criarPedidoCompleto({
         idempotencyKey: idempotencyKeyRef.current,

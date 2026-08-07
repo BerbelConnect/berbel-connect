@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
 import { adicionarMesesDataIso, dataIsoBrasil, inicioMesBrasil } from "@/lib/dataBrasil";
+import { movimentoCancelado } from "@/lib/financeiro/statusMovimento";
 
 type ContaPagar = {
   id?: string;
@@ -232,16 +233,20 @@ export default function ContasPagarPage() {
     );
   }, [contas, busca]);
 
-  const total = contasFiltradas.reduce(
+  const contasOperacionais = contasFiltradas.filter(
+    (conta) => !movimentoCancelado(conta)
+  );
+
+  const total = contasOperacionais.reduce(
     (soma, conta) => soma + Number(conta.valor || 0),
     0
   );
 
-  const pendente = contasFiltradas
+  const pendente = contasOperacionais
     .filter((conta) => conta.status === "Pendente")
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
-  const pago = contasFiltradas
+  const pago = contasOperacionais
     .filter((conta) => conta.status === "Pago")
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
@@ -258,7 +263,7 @@ export default function ContasPagarPage() {
               <Card titulo="Total" valor={moeda(total)} />
               <Card titulo="Pendente" valor={moeda(pendente)} />
               <Card titulo="Pago" valor={moeda(pago)} />
-              <Card titulo="Lançamentos" valor={contasFiltradas.length} />
+              <Card titulo="Lançamentos" valor={contasOperacionais.length} />
             </div>
 
             <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
@@ -371,12 +376,14 @@ export default function ContasPagarPage() {
                         <td className="px-4 py-4">{conta.status}</td>
                         <td className="px-4 py-4">{conta.recorrencia_id ? `Fixa · ${conta.competencia?.slice(0, 7) || "mensal"}` : "Avulsa"}</td>
                         <td className="space-x-2 px-4 py-4">
-                          <button
-                            onClick={() => editarConta(conta)}
-                            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
-                          >
-                            Editar
-                          </button>
+                          {!movimentoCancelado(conta) && (
+                            <button
+                              onClick={() => editarConta(conta)}
+                              className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+                            >
+                              Editar
+                            </button>
+                          )}
 
                           {conta.status === "Pendente" && (
                             <button
