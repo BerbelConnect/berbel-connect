@@ -66,6 +66,11 @@ type PedidoForm = {
   observacoes: string;
 };
 
+type MensagemTela = {
+  tipo: "sucesso" | "erro" | "aviso";
+  texto: string;
+};
+
 function hojeISO() {
   return dataIsoBrasil();
 }
@@ -154,7 +159,13 @@ export default function PedidosPage() {
   const [carregandoDados, setCarregandoDados] = useState(true);
   const [cancelandoId, setCancelandoId] = useState<string | null>(null);
   const [administrador, setAdministrador] = useState(false);
+  const [mensagem, setMensagem] = useState<MensagemTela | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+
+  function exibirMensagem(tipo: MensagemTela["tipo"], texto: string) {
+    setMensagem({ tipo, texto });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function carregarDados() {
     setCarregandoDados(true);
@@ -273,7 +284,7 @@ export default function PedidosPage() {
           setPedidos(dados.pedidos);
         }
       } else {
-        alert(error?.message || "Erro ao carregar dados.");
+        exibirMensagem("erro", error?.message || "Erro ao carregar dados.");
       }
     } finally {
       setCarregandoDados(false);
@@ -345,11 +356,15 @@ export default function PedidosPage() {
   }
 
   function adicionarItem() {
-    if (!itemAtual.produto_id) return alert("Selecione um produto.");
-    if (!itemAtual.quantidade) return alert("Informe a quantidade.");
+    if (!itemAtual.produto_id) {
+      return exibirMensagem("aviso", "Selecione um produto.");
+    }
+    if (!itemAtual.quantidade) {
+      return exibirMensagem("aviso", "Informe a quantidade.");
+    }
 
     if (Number(itemAtual.quantidade) <= 0) {
-      return alert("A quantidade precisa ser maior que zero.");
+      return exibirMensagem("aviso", "A quantidade precisa ser maior que zero.");
     }
 
     setItens([...itens, itemAtual]);
@@ -470,9 +485,13 @@ export default function PedidosPage() {
   async function salvarPedido() {
     if (carregando) return;
 
-    if (!form.cliente_id) return alert("Selecione o cliente.");
-    if (itens.length === 0) return alert("Adicione ao menos um produto.");
-    if (!form.data_pedido) return alert("Informe a data do pedido.");
+    if (!form.cliente_id) return exibirMensagem("aviso", "Selecione o cliente.");
+    if (itens.length === 0) {
+      return exibirMensagem("aviso", "Adicione ao menos um produto.");
+    }
+    if (!form.data_pedido) {
+      return exibirMensagem("aviso", "Informe a data do pedido.");
+    }
 
     setCarregando(true);
 
@@ -499,14 +518,17 @@ export default function PedidosPage() {
 
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         salvarPedidoOffline(pedidoCompleto);
-        alert("Pedido salvo neste dispositivo. Ele será sincronizado quando a internet voltar.");
+        exibirMensagem(
+          "aviso",
+          "Pedido salvo neste dispositivo. Ele será sincronizado quando a internet voltar."
+        );
         limparFormulario();
         return;
       }
 
       const resultado = await criarPedidoCompleto(pedidoCompleto);
 
-      alert(`Pedido ${resultado.numero} salvo com sucesso.`);
+      exibirMensagem("sucesso", `Pedido ${resultado.numero} salvo com sucesso.`);
 
       limparFormulario();
       await carregarDados();
@@ -531,14 +553,15 @@ export default function PedidosPage() {
           contasReceber,
           contasPagar,
         });
-        alert(
+        exibirMensagem(
+          "aviso",
           "A conexão caiu. O pedido foi preservado neste dispositivo e será sincronizado depois."
         );
         limparFormulario();
         return;
       }
 
-      alert(error?.message || "Erro inesperado ao salvar pedido.");
+      exibirMensagem("erro", error?.message || "Erro inesperado ao salvar pedido.");
     } finally {
       setCarregando(false);
     }
@@ -552,7 +575,7 @@ export default function PedidosPage() {
     );
     if (motivo === null) return;
     if (motivo.trim().length < 5) {
-      return alert("Informe um motivo com pelo menos 5 caracteres.");
+      return exibirMensagem("aviso", "Informe um motivo com pelo menos 5 caracteres.");
     }
     if (!confirm("Confirmar o cancelamento? O histórico será preservado.")) {
       return;
@@ -561,10 +584,10 @@ export default function PedidosPage() {
     setCancelandoId(pedido.id);
     try {
       const resultado = await cancelarPedido(pedido.id, motivo.trim());
-      alert(`Pedido ${resultado.numero} cancelado com sucesso.`);
+      exibirMensagem("sucesso", `Pedido ${resultado.numero} cancelado com sucesso.`);
       await carregarDados();
     } catch (error: any) {
-      alert(error?.message || "Erro ao cancelar pedido.");
+      exibirMensagem("erro", error?.message || "Erro ao cancelar pedido.");
     } finally {
       setCancelandoId(null);
     }
@@ -579,6 +602,28 @@ export default function PedidosPage() {
           <PageHeader titulo="Pedidos" subtitulo="ERP Comercial" />
 
           <div className="p-8">
+            {mensagem && (
+              <div
+                role="status"
+                className={`mb-6 flex items-start justify-between gap-4 rounded-2xl border p-5 text-sm shadow-sm ${
+                  mensagem.tipo === "sucesso"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : mensagem.tipo === "erro"
+                      ? "border-red-200 bg-red-50 text-red-800"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}
+              >
+                <span>{mensagem.texto}</span>
+                <button
+                  type="button"
+                  onClick={() => setMensagem(null)}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Fechar
+                </button>
+              </div>
+            )}
+
             {carregandoDados && (
               <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
                 Carregando dados do sistema...
