@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { carregarPerfilOffline, salvarPerfilOffline } from "@/lib/auth/perfilOffline";
 
 type MenuItem = {
   nome: string;
@@ -201,18 +202,28 @@ export function Sidebar() {
       return;
     }
 
-    const { data } = await supabase
+    if (!navigator.onLine) {
+      const salvo = carregarPerfilOffline(email);
+      setPerfil(salvo?.ativo ? salvo.perfil : "Sem perfil");
+      setNome(email);
+      setCarregando(false);
+      return;
+    }
+
+    const { data, error } = await supabase
       .from("perfis_usuarios")
       .select("nome, perfil, ativo")
       .eq("email", email)
       .eq("ativo", true)
       .single();
 
-    if (data) {
+    if (!error && data) {
       setPerfil(data.perfil);
       setNome(data.nome || email);
+      salvarPerfilOffline(email, { perfil: data.perfil, ativo: data.ativo });
     } else {
-      setPerfil("Sem perfil");
+      const salvo = carregarPerfilOffline(email);
+      setPerfil(salvo?.ativo ? salvo.perfil : "Sem perfil");
       setNome(email);
     }
 

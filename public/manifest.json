@@ -2,21 +2,33 @@
   "name": "Berbel Connect",
   "short_name": "Berbel Connect",
   "description": "CRM para representantes comerciais",
-  "start_url": "/login",
+  "id": "/",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "lang": "pt-BR",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "orientation": "portrait",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "Pedidos", "url": "/pedidos", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Agenda e Visitas", "url": "/agenda", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Pedidos Offline", "url": "/pedidos/offline", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }
