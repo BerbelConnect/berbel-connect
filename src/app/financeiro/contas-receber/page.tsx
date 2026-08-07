@@ -7,6 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { baixarMovimento } from "@/lib/financeiro/baixarMovimento";
 import { estornarMovimento } from "@/lib/financeiro/estornarMovimento";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
+import {
+  movimentoCancelado,
+  movimentoPendente,
+  situacaoContaReceber,
+} from "@/lib/financeiro/statusMovimento";
 
 type Cliente = {
   id: string;
@@ -49,17 +54,14 @@ function hojeISO() {
 }
 
 function situacaoConta(conta: any) {
-  if (conta.status === "Recebido") return "Recebido";
-  if (!conta.vencimento) return "Sem vencimento";
-  if (conta.vencimento < hojeISO()) return "Vencido";
-  if (conta.vencimento === hojeISO()) return "Vence hoje";
-  return "A vencer";
+  return situacaoContaReceber(conta, hojeISO());
 }
 
 function classeSituacao(conta: any) {
   const situacao = situacaoConta(conta);
 
   if (situacao === "Recebido") return "bg-green-100 text-green-700";
+  if (situacao === "Cancelado") return "bg-slate-200 text-slate-700";
   if (situacao === "Vencido") return "bg-red-100 text-red-700";
   if (situacao === "Vence hoje") return "bg-yellow-100 text-yellow-700";
   if (situacao === "A vencer") return "bg-blue-100 text-blue-700";
@@ -189,7 +191,7 @@ export default function ContasReceberPage() {
       .filter((conta) => {
         const situacao = situacaoConta(conta);
 
-        if (filtro === "Pendentes" && conta.status === "Recebido") return false;
+        if (filtro === "Pendentes" && !movimentoPendente(conta)) return false;
         if (filtro === "Recebidos" && conta.status !== "Recebido") return false;
         if (filtro === "Vencidos" && situacao !== "Vencido") return false;
         if (filtro === "Hoje" && situacao !== "Vence hoje") return false;
@@ -210,24 +212,28 @@ export default function ContasReceberPage() {
       );
   }, [contas, busca, filtro]);
 
-  const total = contasFiltradas.reduce(
+  const contasOperacionais = contasFiltradas.filter(
+    (conta) => !movimentoCancelado(conta)
+  );
+
+  const total = contasOperacionais.reduce(
     (soma, conta) => soma + Number(conta.valor || 0),
     0
   );
 
-  const pendente = contasFiltradas
-    .filter((conta) => conta.status !== "Recebido")
+  const pendente = contasOperacionais
+    .filter((conta) => movimentoPendente(conta))
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
-  const recebido = contasFiltradas
+  const recebido = contasOperacionais
     .filter((conta) => conta.status === "Recebido")
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
-  const vencido = contasFiltradas
+  const vencido = contasOperacionais
     .filter((conta) => situacaoConta(conta) === "Vencido")
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
-  const venceHoje = contasFiltradas
+  const venceHoje = contasOperacionais
     .filter((conta) => situacaoConta(conta) === "Vence hoje")
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
@@ -414,14 +420,16 @@ export default function ContasReceberPage() {
                         </td>
 
                         <td className="space-x-2 px-4 py-4">
-                          <button
-                            onClick={() => editarConta(conta)}
-                            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
-                          >
-                            Editar
-                          </button>
+                          {!movimentoCancelado(conta) && (
+                            <button
+                              onClick={() => editarConta(conta)}
+                              className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+                            >
+                              Editar
+                            </button>
+                          )}
 
-                          {conta.status !== "Recebido" && (
+                          {movimentoPendente(conta) && (
                             <button
                               onClick={() => marcarRecebida(conta)}
                               className="rounded-lg bg-green-100 px-3 py-2 text-green-700"
