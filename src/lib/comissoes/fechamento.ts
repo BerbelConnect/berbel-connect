@@ -9,7 +9,13 @@ const iso = (data: Date) => dataIsoBrasil(data);
 const normalizar = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 export function dataComissaoBrasil(valor: string) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return valor;
-  const data = new Date(valor);
+  // Alguns projetos Supabase devolvem timestamps UTC sem `Z`/offset quando a
+  // coluna historica foi criada como timestamp. Nessa forma o navegador os
+  // interpretaria como horario local e mudaria o fechamento para o dia seguinte.
+  const instante = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(valor)
+    ? `${valor.replace(" ", "T")}Z`
+    : valor;
+  const data = new Date(instante);
   return Number.isNaN(data.getTime()) ? valor.slice(0, 10) : dataIsoBrasil(data);
 }
 export function intervaloFechamento(periodo: "mes" | "30d" | "90d" | "ano" | "custom", inicio = "", fim = "", agora = new Date()) {

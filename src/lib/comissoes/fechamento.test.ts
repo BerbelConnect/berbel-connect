@@ -8,6 +8,8 @@ describe("fechamento de comissões", () => {
   it("calcula período mensal", () => { expect(intervaloFechamento("mes", "", "", new Date("2026-08-10T12:00:00Z"))).toEqual({ inicio: "2026-08-01", fim: "2026-08-10" }); });
   it("converte a criação UTC para a data operacional do Brasil", () => {
     expect(dataComissaoBrasil("2026-08-07T01:06:00.000Z")).toBe("2026-08-06");
+    expect(dataComissaoBrasil("2026-08-07T01:06:00.000000")).toBe("2026-08-06");
+    expect(dataComissaoBrasil("2026-08-07 01:06:00.000000")).toBe("2026-08-06");
     expect(dataComissaoBrasil("2026-08-06")).toBe("2026-08-06");
   });
   it("remove comissões canceladas do fechamento", () => {
