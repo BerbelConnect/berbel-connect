@@ -60,3 +60,4 @@ describe("estornos financeiros auditáveis", () => {
     ).rejects.toThrow("Este movimento já foi estornado.");
   });
 });
+
