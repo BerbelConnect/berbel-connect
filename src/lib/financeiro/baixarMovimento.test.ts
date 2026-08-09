@@ -80,3 +80,4 @@ describe("baixas financeiras auditáveis", () => {
     ).rejects.toThrow("Este movimento já possui baixa confirmada.");
   });
 });
+
