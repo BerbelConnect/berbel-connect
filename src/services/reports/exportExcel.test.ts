@@ -1,35 +1,39 @@
-import ExcelJS from "exceljs";
-import { describe, expect, it } from "vitest";
-import { createExcelWorkbook } from "./exportExcel";
+import * as XLSX from "xlsx";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("exportação Excel", () => {
-  it("gera um arquivo que pode ser reaberto com abas, dados e formatação", async () => {
-    const workbook = createExcelWorkbook(
-      [
-        {
-          name: "Resumo",
-          data: [{ Pedidos: 3, "Valor Total": 1250.5, Recebida: 0, Vencida: 0 }],
-        },
-        {
-          name: "Clientes",
-          data: [{ Cliente: "Empresa Exemplo", Cidade: "Franca" }],
-        },
-      ],
-      new Date("2026-08-06T12:00:00-03:00"),
-    );
+const { saveAs } = vi.hoisted(() => ({ saveAs: vi.fn() }));
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    const reopened = new ExcelJS.Workbook();
-    await reopened.xlsx.load(buffer);
+vi.mock("file-saver", () => ({ saveAs }));
 
-    expect(reopened.worksheets.map((sheet) => sheet.name)).toEqual(["Resumo", "Clientes"]);
-    expect(reopened.getWorksheet("Resumo")?.getCell("A5").value).toBe("Pedidos");
-    expect(reopened.getWorksheet("Resumo")?.getCell("B6").value).toBe(1250.5);
-    expect(reopened.getWorksheet("Resumo")?.getCell("B6").numFmt).toBe('"R$" #,##0.00');
-    expect(reopened.getWorksheet("Resumo")?.getCell("C6").numFmt).toBe('"R$" #,##0.00');
-    expect(reopened.getWorksheet("Resumo")?.getCell("D6").numFmt).toBe('"R$" #,##0.00');
-    expect(reopened.getWorksheet("Resumo")?.getColumn(3).numFmt).toBe('"R$" #,##0.00');
-    expect(reopened.getWorksheet("Resumo")?.getColumn(4).numFmt).toBe('"R$" #,##0.00');
-    expect(reopened.getWorksheet("Clientes")?.getCell("A6").value).toBe("Empresa Exemplo");
+import { exportToExcel } from "./exportExcel";
+
+describe("exportToExcel", () => {
+  beforeEach(() => saveAs.mockReset());
+
+  it("gera uma planilha com todas as abas e o nome informado", async () => {
+    exportToExcel("Relatorio-Teste", [
+      { name: "Resumo", data: [{ Pedidos: 2, Total: 150.5 }] },
+      { name: "Clientes", data: [{ Cliente: "Cliente Exemplo", Vendas: 3 }] },
+    ]);
+
+    expect(saveAs).toHaveBeenCalledTimes(1);
+    expect(saveAs.mock.calls[0][1]).toBe("Relatorio-Teste.xlsx");
+
+    const arquivo = saveAs.mock.calls[0][0] as Blob;
+    const workbook = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
+
+    expect(workbook.SheetNames).toEqual(["Resumo", "Clientes"]);
+    expect(workbook.Sheets.Resumo["A1"].v).toBe("Berbel Connect");
+    expect(workbook.Sheets.Resumo["B1"].v).toBe("Relatório");
+    expect(workbook.Sheets.Resumo["B3"].v).toBe("Resumo");
+    expect(workbook.Sheets.Resumo["D6"].v).toBe(2);
+    expect(workbook.Sheets.Resumo["E6"].v).toBe(150.5);
+  });
+
+  it("aceita uma aba sem registros", () => {
+    exportToExcel("Relatorio-Vazio", [{ name: "Sem dados", data: [] }]);
+
+    expect(saveAs).toHaveBeenCalledOnce();
+    expect(saveAs.mock.calls[0][1]).toBe("Relatorio-Vazio.xlsx");
   });
 });
