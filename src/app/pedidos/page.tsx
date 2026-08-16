@@ -23,6 +23,7 @@ import { carregarPerfilOffline } from "@/lib/auth/perfilOffline";
 type Cliente = {
   id: string;
   razao_social: string;
+  nome_fantasia?: string | null;
   condicao_pagamento_padrao?: string | null;
 };
 
@@ -155,6 +156,7 @@ export default function PedidosPage() {
   const [itens, setItens] = useState<ItemPedido[]>([]);
 
   const [busca, setBusca] = useState("");
+  const [buscaCliente, setBuscaCliente] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [carregandoDados, setCarregandoDados] = useState(true);
   const [cancelandoId, setCancelandoId] = useState<string | null>(null);
@@ -204,7 +206,7 @@ export default function PedidosPage() {
       const [clientesResp, produtosResp, pedidosResp] = await Promise.all([
         supabase
           .from("clientes")
-          .select("id, razao_social, condicao_pagamento_padrao")
+          .select("id, razao_social, nome_fantasia, condicao_pagamento_padrao")
           .order("razao_social"),
 
         supabase
@@ -328,6 +330,22 @@ export default function PedidosPage() {
         atual.condicao_pagamento ||
         "A combinar",
     }));
+  }
+
+  const clientesFiltrados = useMemo(() => {
+    const termo = normalizarTexto(buscaCliente);
+    if (!termo) return clientes;
+
+    return clientes.filter((cliente) =>
+      normalizarTexto(`${cliente.nome_fantasia || ""} ${cliente.razao_social || ""}`).includes(termo)
+    );
+  }, [buscaCliente, clientes]);
+
+  function nomeCliente(cliente: Cliente) {
+    const fantasia = cliente.nome_fantasia?.trim();
+    return fantasia && normalizarTexto(fantasia) !== normalizarTexto(cliente.razao_social)
+      ? `${fantasia} — ${cliente.razao_social}`
+      : cliente.razao_social;
   }
 
   function selecionarProduto(produtoId: string) {
@@ -663,15 +681,24 @@ export default function PedidosPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <input
+                  type="search"
+                  value={buscaCliente}
+                  onChange={(e) => setBuscaCliente(e.target.value)}
+                  placeholder="Buscar por nome fantasia ou razão social"
+                  aria-label="Buscar cliente por nome fantasia ou razão social"
+                  className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-2"
+                />
+
                 <select
                   value={form.cliente_id}
                   onChange={(e) => selecionarCliente(e.target.value)}
                   className="rounded-xl border border-slate-200 px-4 py-3"
                 >
                   <option value="">Selecione o cliente</option>
-                  {clientes.map((cliente) => (
+                  {clientesFiltrados.map((cliente) => (
                     <option key={cliente.id} value={cliente.id}>
-                      {cliente.razao_social}
+                      {nomeCliente(cliente)}
                     </option>
                   ))}
                 </select>
