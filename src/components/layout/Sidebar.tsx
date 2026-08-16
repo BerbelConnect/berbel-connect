@@ -180,6 +180,11 @@ const menu: MenuItem[] = [
     href: "/usuarios",
     perfis: ["Administrador"],
   },
+  {
+    nome: "Auditoria Administrativa",
+    href: "/auditoria",
+    perfis: ["Administrador"],
+  },
 ];
 
 export function Sidebar() {
