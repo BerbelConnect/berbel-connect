@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { cancelarPedido } from "@/lib/pedidos/cancelarPedido";
 import { gerarPedidoPDF } from "@/lib/pdf/pedidoPdf";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
+import { editarPedidoAuditavel, excluirPedidoCancelado } from "@/lib/auditoria/service";
+import { calcularTotaisItens, motivoValido } from "@/lib/auditoria/calculos";
 
 const statusOpcoes = ["Todos", "Orçamento", "Pedido", "Em produção", "Faturado", "Entregue", "Cancelado"];
 const tipoOpcoes = ["Todos", "Representação", "Revenda Própria", "Misto"];
@@ -53,6 +55,7 @@ export default function ConsultaPedidosPage() {
   const [filtroPeriodo, setFiltroPeriodo] = useState("Todos");
   const [editando, setEditando] = useState<any | null>(null);
   const [mensagem, setMensagem] = useState<MensagemTela | null>(null);
+  const [administrador, setAdministrador] = useState(false);
 
   function exibirMensagem(tipo: MensagemTela["tipo"], texto: string) {
     setMensagem({ tipo, texto });
@@ -99,6 +102,12 @@ export default function ConsultaPedidosPage() {
 
   useEffect(() => {
     carregarDados();
+    void supabase.auth.getUser().then(async ({ data }) => {
+      const email = data.user?.email;
+      if (!email) return;
+      const perfil = await supabase.from("perfis_usuarios").select("perfil").eq("email", email).eq("ativo", true).maybeSingle();
+      setAdministrador(perfil.data?.perfil === "Administrador");
+    });
   }, []);
 
   async function alterarStatus(pedido: any, status: string) {
@@ -118,6 +127,17 @@ export default function ConsultaPedidosPage() {
       status: pedido.status || "Pedido",
       tipo_operacao: pedido.tipo_operacao || "Representação",
       observacoes: pedido.observacoes || "",
+      motivo: "",
+      itens: (pedido.pedido_itens || []).map((item: any) => ({
+        id: item.id,
+        produto_id: item.produto_id || "",
+        produto_nome: item.produto_nome || item.produtos?.nome || "",
+        fornecedor_id: item.fornecedor_id || "",
+        quantidade: Number(item.quantidade || 0),
+        valor_unitario: Number(item.valor_unitario || 0),
+        valor_custo_unitario: Number(item.valor_custo_unitario || item.preco_custo || 0),
+        comissao_percentual: Number(item.comissao_percentual || 0),
+      })),
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -126,25 +146,33 @@ export default function ConsultaPedidosPage() {
   async function salvarEdicao() {
     if (!editando?.id) return;
     if (!editando.cliente_id) return exibirMensagem("aviso", "Selecione o cliente.");
-
-    const { error } = await supabase
-      .from("pedidos")
-      .update({
-        cliente_id: editando.cliente_id,
-        numero: editando.numero,
-        data_pedido: editando.data_pedido,
-        data_entrega_prevista: editando.data_entrega_prevista || null,
-        status: editando.status,
-        tipo_operacao: editando.tipo_operacao,
+    if (!motivoValido(editando.motivo)) return exibirMensagem("aviso", "Informe o motivo da edição com pelo menos 5 caracteres.");
+    if (!editando.itens.length) return exibirMensagem("aviso", "O pedido deve ter ao menos um item.");
+    try {
+      await editarPedidoAuditavel(editando.id, editando.motivo, {
+        cliente_id: editando.cliente_id, numero: editando.numero,
+        data_pedido: editando.data_pedido, data_entrega_prevista: editando.data_entrega_prevista,
         observacoes: editando.observacoes,
-      })
-      .eq("id", editando.id);
-
-    if (error) return exibirMensagem("erro", error.message);
+      }, editando.itens);
+    } catch (error) { return exibirMensagem("erro", (error as Error).message); }
 
     setEditando(null);
     await carregarDados();
     exibirMensagem("sucesso", "Pedido atualizado com sucesso.");
+  }
+
+  function alterarItem(index: number, campo: string, valor: string) {
+    setEditando((atual: any) => ({ ...atual, itens: atual.itens.map((item: any, i: number) => i === index ? { ...item, [campo]: campo === "produto_nome" ? valor : Number(valor) } : item) }));
+  }
+
+  async function excluirCancelado(pedido: any) {
+    const motivo = prompt(`Motivo da exclusão definitiva do pedido ${pedido.numero || pedido.id}:`);
+    if (motivo === null) return;
+    if (!motivoValido(motivo)) return exibirMensagem("aviso", "Informe um motivo com pelo menos 5 caracteres.");
+    if (!confirm("A cópia completa ficará na auditoria, mas o pedido será removido das telas. Deseja continuar?")) return;
+    try { await excluirPedidoCancelado(pedido.id, motivo); }
+    catch (error) { return exibirMensagem("erro", (error as Error).message); }
+    await carregarDados(); exibirMensagem("sucesso", "Pedido cancelado excluído e preservado integralmente na auditoria.");
   }
     function enviarWhatsApp(pedido: any) {
     const numero = pedido.clientes?.whatsapp?.replace(/\D/g, "");
@@ -298,6 +326,7 @@ Berbel Connect
   const pedidosRevenda = pedidosFiltrados.filter((pedido) => pedido.tipo_operacao === "Revenda Própria").length;
   const pedidosProducao = pedidosFiltrados.filter((pedido) => pedido.status === "Em produção").length;
   const pedidosEntregues = pedidosFiltrados.filter((pedido) => pedido.status === "Entregue").length;
+  const totaisEdicao = editando ? calcularTotaisItens(editando.itens) : null;
     return (
     <main className="min-h-screen bg-slate-100">
       <div className="flex">
@@ -402,7 +431,27 @@ Berbel Connect
                     placeholder="Observações"
                     className="rounded-xl border border-slate-200 px-4 py-3 md:col-span-4"
                   />
+                  <input
+                    value={editando.motivo}
+                    onChange={(e) => setEditando({ ...editando, motivo: e.target.value })}
+                    placeholder="Motivo obrigatório da alteração"
+                    className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 md:col-span-4"
+                  />
                 </div>
+
+                <h4 className="mt-6 font-bold text-slate-800">Itens do pedido</h4>
+                <div className="mt-3 space-y-3">
+                  {editando.itens.map((item: any, index: number) => (
+                    <div key={item.id || index} className="grid gap-3 rounded-xl border p-3 md:grid-cols-6">
+                      <input value={item.produto_nome} onChange={(e) => alterarItem(index, "produto_nome", e.target.value)} placeholder="Produto" className="rounded-lg border px-3 py-2 md:col-span-2" />
+                      <input type="number" min="0.001" step="0.001" value={item.quantidade} onChange={(e) => alterarItem(index, "quantidade", e.target.value)} aria-label="Quantidade" className="rounded-lg border px-3 py-2" />
+                      <input type="number" min="0" step="0.01" value={item.valor_unitario} onChange={(e) => alterarItem(index, "valor_unitario", e.target.value)} aria-label="Valor unitário" className="rounded-lg border px-3 py-2" />
+                      <input type="number" min="0" step="0.01" value={item.valor_custo_unitario} onChange={(e) => alterarItem(index, "valor_custo_unitario", e.target.value)} aria-label="Custo unitário" className="rounded-lg border px-3 py-2" />
+                      <div className="flex gap-2"><input type="number" min="0" step="0.01" value={item.comissao_percentual} onChange={(e) => alterarItem(index, "comissao_percentual", e.target.value)} aria-label="Comissão percentual" className="min-w-0 flex-1 rounded-lg border px-3 py-2" /><button type="button" onClick={() => setEditando({ ...editando, itens: editando.itens.filter((_: any, i: number) => i !== index) })} className="rounded-lg bg-red-50 px-3 text-red-700">Excluir</button></div>
+                    </div>
+                  ))}
+                </div>
+                {totaisEdicao && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm font-semibold">Novo total: {moeda(totaisEdicao.valorTotal)} · Custo: {moeda(totaisEdicao.valorCustoTotal)} · Comissão: {moeda(totaisEdicao.valorComissao)} · Lucro: {moeda(totaisEdicao.lucroTotal)}</p>}
 
                 <div className="mt-5 flex gap-3">
                   <button onClick={salvarEdicao} className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white">
@@ -506,9 +555,9 @@ Berbel Connect
                         {pedidoAberto === pedido.id ? "Ocultar itens" : "Ver itens"}
                       </button>
 
-                      <button onClick={() => abrirEdicao(pedido)} className="rounded-lg bg-amber-500 px-4 py-2 text-white">
+                      {administrador && <button onClick={() => abrirEdicao(pedido)} className="rounded-lg bg-amber-500 px-4 py-2 text-white">
                         Editar
-                      </button>
+                      </button>}
 
                       <button onClick={() => duplicarPedido(pedido)} className="rounded-lg bg-purple-600 px-4 py-2 text-white">
                         Duplicar
@@ -523,6 +572,7 @@ Berbel Connect
                       </button>
 
                       {pedido.status !== "Cancelado" && <button onClick={() => cancelarPedidoConsulta(pedido.id)} className="rounded-lg bg-red-600 px-4 py-2 text-white">Cancelar pedido</button>}
+                      {administrador && pedido.status === "Cancelado" && <button onClick={() => excluirCancelado(pedido)} className="rounded-lg bg-red-950 px-4 py-2 text-white">Excluir definitivamente</button>}
                     </div>
 
                     {pedidoAberto === pedido.id && (

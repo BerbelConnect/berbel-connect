@@ -40,6 +40,7 @@ export const PERMISSOES_ROTAS: ReadonlyArray<{
   { prefixo: "/relatorios-comerciais", perfis: ["Administrador", "Representante"] },
   { prefixo: "/exportacoes", perfis: ["Administrador", "Financeiro"] },
   { prefixo: "/usuarios", perfis: ["Administrador"] },
+  { prefixo: "/auditoria", perfis: ["Administrador"] },
   { prefixo: "/metas", perfis: ["Administrador", "Representante"] },
 ];
 
