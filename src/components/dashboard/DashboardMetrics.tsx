@@ -25,9 +25,14 @@ export function DashboardMetrics({ resumo }: DashboardMetricsProps) {
       <Card titulo="Comissão prevista" valor={resumo.totalComissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
       <Card titulo="Comissão recebida" valor={resumo.comissaoRecebida.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
       <Card titulo="Comissão pendente" valor={resumo.comissaoPendente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-      <Card titulo="A receber" valor={resumo.totalReceber.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-      <Card titulo="A pagar" valor={resumo.totalPagar.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-      <Card titulo="Saldo previsto" valor={resumo.saldoPrevisto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
+      <Card titulo="A receber no mês" valor={resumo.totalReceber.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
+      <Card titulo="A pagar no mês" valor={resumo.totalPagar.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
+      <Card
+        titulo="Saldo real do banco"
+        valor={resumo.saldoRealBanco === null
+          ? "Não conciliado"
+          : resumo.saldoRealBanco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+      />
       <Card titulo="Pipeline aberto" valor={resumo.valorPipeline.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
       <Card titulo="Clientes" valor={resumo.clientesCount} />
       <Card titulo="Visitas hoje" valor={resumo.visitasHojeCount} />

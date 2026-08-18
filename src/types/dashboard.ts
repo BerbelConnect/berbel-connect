@@ -5,7 +5,7 @@ export type DashboardResumo = {
   comissaoPendente: number;
   totalReceber: number;
   totalPagar: number;
-  saldoPrevisto: number;
+  saldoRealBanco: number | null;
   valorPipeline: number;
   clientesCount: number;
   visitasHojeCount: number;
