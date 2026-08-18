@@ -26,34 +26,67 @@ type FinanceiroResumoRow = {
   valor_comissao?: string | number | null;
 };
 
+type UltimaConciliacaoRow = {
+  saldo_banco?: string | number | null;
+};
+
 function parseNumber(value: unknown) {
   return Number(value || 0);
 }
 
+function inicioMesIso(data = new Date()) {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  return `${ano}-${mes}-01`;
+}
+
+function inicioProximoMesIso(data = new Date()) {
+  const proximoMes = new Date(data.getFullYear(), data.getMonth() + 1, 1);
+  return inicioMesIso(proximoMes);
+}
+
 export async function carregarResumoFinanceiro() {
   const perfil = await obterPerfilAtual();
+  const inicioMes = inicioMesIso();
+  const inicioProximoMes = inicioProximoMesIso();
 
   const receberQuery = supabase
     .from("contas_receber")
-    .select("valor, status, clientes(razao_social, responsavel_perfil_id)");
+    .select("valor, status, clientes(razao_social, responsavel_perfil_id)")
+    .eq("status", "Pendente")
+    .gte("vencimento", inicioMes)
+    .lt("vencimento", inicioProximoMes);
 
   if (perfil.perfil !== "Administrador" && perfil.perfilId) {
     receberQuery.eq("clientes.responsavel_perfil_id", perfil.perfilId);
   }
 
-  const [receberResp, pagarResp, comissoesResp] = await Promise.all([
-    receberQuery.neq("status", "Recebido"),
-    supabase.from("contas_pagar").select("valor, status"),
+  const [receberResp, pagarResp, comissoesResp, conciliacaoResp] = await Promise.all([
+    receberQuery,
+    supabase
+      .from("contas_pagar")
+      .select("valor, status")
+      .eq("status", "Pendente")
+      .gte("vencimento", inicioMes)
+      .lt("vencimento", inicioProximoMes),
     supabase.from("comissoes_financeiro").select("valor_comissao, status, clientes(razao_social, responsavel_perfil_id)"),
+    supabase
+      .from("ajustes_financeiros")
+      .select("saldo_banco")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (receberResp.error) throw receberResp.error;
   if (pagarResp.error) throw pagarResp.error;
   if (comissoesResp.error) throw comissoesResp.error;
+  if (conciliacaoResp.error) throw conciliacaoResp.error;
 
   const receberRows = (receberResp.data || []) as FinanceiroResumoRow[];
   const pagarRows = (pagarResp.data || []) as FinanceiroResumoRow[];
   const comissoesRows = (comissoesResp.data || []) as FinanceiroResumoRow[];
+  const ultimaConciliacao = conciliacaoResp.data as UltimaConciliacaoRow | null;
 
   const totalReceber = receberRows.reduce(
     (soma, item) => soma + parseNumber(item.valor),
@@ -79,7 +112,9 @@ export async function carregarResumoFinanceiro() {
   return {
     totalReceber,
     totalPagar,
-    saldoPrevisto: totalReceber - totalPagar,
+    saldoRealBanco: ultimaConciliacao?.saldo_banco == null
+      ? null
+      : parseNumber(ultimaConciliacao.saldo_banco),
     totalComissao,
     comissaoRecebida,
     comissaoPendente,
