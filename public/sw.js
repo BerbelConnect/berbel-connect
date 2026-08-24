@@ -1,9 +1,9 @@
-const VERSAO = "v4";
+const VERSAO = "v5";
 const PREFIXO = "berbel-connect-";
 const CACHE_SHELL = `${PREFIXO}shell-${VERSAO}`;
 const CACHE_PAGINAS = `${PREFIXO}paginas-${VERSAO}`;
 const CACHE_ASSETS = `${PREFIXO}assets-${VERSAO}`;
-const PRECACHE = ["/offline.html", "/manifest.json", "/icon-192.png", "/icon-512.png", "/logo-berbel.png"];
+const PRECACHE = ["/agenda", "/visitas", "/offline.html", "/manifest.json", "/icon-192.png", "/icon-512.png", "/logo-berbel.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

@@ -6,6 +6,9 @@ export function filtrarVisitas(visitas: AgendaVisita[], busca: string): AgendaVi
   return visitas.filter((visita) =>
     [
       visita.clientes?.razao_social,
+      visita.contato_avulso_nome,
+      visita.contato_avulso_empresa,
+      visita.contato_avulso_telefone,
       visita.bairro,
       visita.status,
       visita.tipo_contato,

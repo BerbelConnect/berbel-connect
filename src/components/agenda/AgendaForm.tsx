@@ -25,6 +25,16 @@ export function AgendaForm({
       </h3>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 md:col-span-4">
+          <input type="checkbox" checked={form.contato_avulso} onChange={(e) => onChange({ ...form, contato_avulso: e.target.checked, cliente_id: e.target.checked ? "" : form.cliente_id })} />
+          Visita para contato ainda não cadastrado
+        </label>
+        {form.contato_avulso ? <>
+          <input placeholder="Nome do contato *" value={form.contato_avulso_nome} onChange={(e) => onChange({ ...form, contato_avulso_nome: e.target.value })} className="rounded-xl border border-slate-200 px-4 py-3" />
+          <input placeholder="Empresa" value={form.contato_avulso_empresa} onChange={(e) => onChange({ ...form, contato_avulso_empresa: e.target.value })} className="rounded-xl border border-slate-200 px-4 py-3" />
+          <input placeholder="Telefone" value={form.contato_avulso_telefone} onChange={(e) => onChange({ ...form, contato_avulso_telefone: e.target.value })} className="rounded-xl border border-slate-200 px-4 py-3" />
+          <input placeholder="Endereço" value={form.contato_avulso_endereco} onChange={(e) => onChange({ ...form, contato_avulso_endereco: e.target.value })} className="rounded-xl border border-slate-200 px-4 py-3" />
+        </> : (
         <select
           value={form.cliente_id}
           onChange={(e) => onChange({ ...form, cliente_id: e.target.value })}
@@ -33,10 +43,11 @@ export function AgendaForm({
           <option value="">Selecione o cliente</option>
           {clientes.map((cliente) => (
             <option key={cliente.id} value={cliente.id}>
-              {cliente.razao_social}
+              {[cliente.nome_fantasia, cliente.razao_social].filter(Boolean).join(" — ")}
             </option>
           ))}
         </select>
+        )}
 
         <input
           type="date"
