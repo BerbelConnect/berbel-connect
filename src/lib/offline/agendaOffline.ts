@@ -15,7 +15,42 @@ function ler<T>(chave: string, fallback: T): T { if (typeof window === "undefine
 function gravar(chave: string, valor: unknown) { if (typeof window === "undefined" || typeof localStorage === "undefined") return; localStorage.setItem(chave, JSON.stringify(valor)); window.dispatchEvent(new Event("berbel:agenda-offline-atualizada")); }
 export function listarOperacoesAgendaOffline() { return ler<OperacaoAgendaOffline[]>(FILA, []); }
 export function contarOperacoesAgendaOffline() { return listarOperacoesAgendaOffline().length; }
-export function enfileirarOperacaoAgenda(operacao: NovaOperacaoAgenda) { const item = { ...operacao, id: crypto.randomUUID(), criado_em: new Date().toISOString() } as OperacaoAgendaOffline; gravar(FILA, [...listarOperacoesAgendaOffline(), item]); return item; }
+export function enfileirarOperacaoAgenda(operacao: NovaOperacaoAgenda) {
+  const item = { ...operacao, id: crypto.randomUUID(), criado_em: new Date().toISOString() } as OperacaoAgendaOffline;
+  gravar(FILA, [...listarOperacoesAgendaOffline(), item]);
+  const visitas = listarVisitasAgendaOffline();
+  if (item.tipo === "salvar") {
+    const form = item.form;
+    const visita: AgendaVisita = {
+      id: form.id || `offline-${item.id}`,
+      cliente_id: form.contato_avulso ? null : form.cliente_id,
+      contato_avulso_nome: form.contato_avulso_nome,
+      contato_avulso_empresa: form.contato_avulso_empresa,
+      contato_avulso_telefone: form.contato_avulso_telefone,
+      contato_avulso_endereco: form.contato_avulso_endereco,
+      data_visita: form.data_visita,
+      hora_visita: form.hora_visita || null,
+      tipo_contato: form.tipo_contato,
+      bairro: form.bairro,
+      status: form.status,
+      resultado: form.resultado,
+      oportunidade: form.oportunidade,
+      valor_potencial: Number(form.valor_potencial || 0),
+      observacoes: form.observacoes,
+      alerta_retorno: form.alerta_retorno,
+      pessoa_atendida: form.pessoa_atendida,
+      proxima_acao: form.proxima_acao,
+      data_retorno: form.data_retorno,
+      lembrete_em: form.lembrete_em,
+    };
+    gravar(VISITAS, [visita, ...visitas.filter((atual) => atual.id !== visita.id)]);
+  } else if (item.tipo === "iniciar") {
+    gravar(VISITAS, visitas.map((visita) => visita.id === item.visita_id ? { ...visita, status: "Em andamento", iniciada_em: item.criado_em } : visita));
+  } else {
+    gravar(VISITAS, visitas.map((visita) => visita.id === item.visita.id ? { ...visita, status: "Concluída", concluida: true, pessoa_atendida: item.resultado.pessoa_atendida, resultado: item.resultado.resultado, proxima_acao: item.resultado.proxima_acao, data_retorno: item.resultado.data_retorno, lembrete_em: item.resultado.lembrete_em } : visita));
+  }
+  return item;
+}
 export function removerOperacaoAgenda(id: string) { gravar(FILA, listarOperacoesAgendaOffline().filter((item) => item.id !== id)); }
 export function salvarCacheAgenda(clientes: AgendaCliente[], visitas: AgendaVisita[]) { gravar(CLIENTES, clientes); gravar(VISITAS, visitas); }
 export function listarClientesAgendaOffline() { return ler<AgendaCliente[]>(CLIENTES, []); }

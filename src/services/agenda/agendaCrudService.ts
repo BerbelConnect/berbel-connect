@@ -38,7 +38,11 @@ export async function salvarVisitaOnline(
 
 export async function salvarVisita(form: AgendaVisitaFormData): Promise<Error | null> {
   if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "salvar", form }); return null; }
-  return salvarVisitaOnline(form);
+  try {
+    const error = await salvarVisitaOnline(form);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "salvar", form }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "salvar", form }); return null; }
 }
 
 export async function registrarResultadoVisitaOnline(
@@ -64,7 +68,11 @@ export async function registrarResultadoVisitaOnline(
 
 export async function registrarResultadoVisita(visita: AgendaVisita, form: AgendaResultadoFormData): Promise<Error | null> {
   if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
-  return registrarResultadoVisitaOnline(visita, form);
+  try {
+    const error = await registrarResultadoVisitaOnline(visita, form);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
 }
 
 export async function iniciarVisitaOnline(id: string): Promise<Error | null> {
@@ -73,7 +81,11 @@ export async function iniciarVisitaOnline(id: string): Promise<Error | null> {
 }
 export async function iniciarVisita(id: string): Promise<Error | null> {
   if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "iniciar", visita_id: id }); return null; }
-  return iniciarVisitaOnline(id);
+  try {
+    const error = await iniciarVisitaOnline(id);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "iniciar", visita_id: id }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "iniciar", visita_id: id }); return null; }
 }
 
 export async function concluirVisita(
