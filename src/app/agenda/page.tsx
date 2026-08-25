@@ -14,6 +14,8 @@ import type {
 import {
   carregarClientes,
   carregarVisitas,
+  atualizarCacheAgenda,
+  iniciarVisita,
   registrarResultadoVisita,
   alterarCancelamentoVisita,
   salvarVisita as salvarVisitaService,
@@ -25,6 +27,11 @@ import { filtrarPorPeriodo } from "@/lib/agendaPeriodo";
 
 const inicial: AgendaVisitaFormData = {
   cliente_id: "",
+  contato_avulso: false,
+  contato_avulso_nome: "",
+  contato_avulso_empresa: "",
+  contato_avulso_telefone: "",
+  contato_avulso_endereco: "",
   data_visita: hojeISO(),
   hora_visita: "",
   tipo_contato: "Presencial",
@@ -52,8 +59,9 @@ export default function AgendaPage() {
   const [visitaEmAtendimento, setVisitaEmAtendimento] = useState<AgendaVisita | null>(null);
 
   async function carregarDados() {
+    let clientesData: AgendaCliente[] = [];
     try {
-      const clientesData = await carregarClientes();
+      clientesData = await carregarClientes();
       setClientes(clientesData);
     } catch (error) {
       alert((error as Error).message || "Erro ao carregar clientes.");
@@ -63,6 +71,7 @@ export default function AgendaPage() {
     try {
       const visitasData = await carregarVisitas();
       setVisitas(visitasData);
+      atualizarCacheAgenda(clientesData, visitasData);
     } catch (error) {
       alert((error as Error).message || "Erro ao carregar visitas.");
     }
@@ -77,7 +86,8 @@ export default function AgendaPage() {
   }, []);
 
   async function handleSalvarVisita() {
-    if (!form.cliente_id) return alert("Selecione o cliente.");
+    if (!form.contato_avulso && !form.cliente_id) return alert("Selecione o cliente.");
+    if (form.contato_avulso && !form.contato_avulso_nome.trim()) return alert("Informe o nome do contato.");
     if (!form.data_visita) return alert("Informe a data da visita.");
 
     setCarregando(true);
@@ -93,7 +103,12 @@ export default function AgendaPage() {
   function handleEditarVisita(visita: AgendaVisita) {
     setForm({
       id: visita.id,
-      cliente_id: visita.cliente_id,
+      cliente_id: visita.cliente_id || "",
+      contato_avulso: !visita.cliente_id,
+      contato_avulso_nome: visita.contato_avulso_nome || "",
+      contato_avulso_empresa: visita.contato_avulso_empresa || "",
+      contato_avulso_telefone: visita.contato_avulso_telefone || "",
+      contato_avulso_endereco: visita.contato_avulso_endereco || "",
       data_visita: visita.data_visita || hojeISO(),
       hora_visita: visita.hora_visita || "",
       tipo_contato: visita.tipo_contato || "Presencial",
@@ -131,6 +146,12 @@ export default function AgendaPage() {
     if (error) return alert(error.message);
 
     carregarDados();
+  }
+
+  async function handleIniciarVisita(visita: AgendaVisita) {
+    const error = await iniciarVisita(visita.id);
+    if (error) return alert(error.message);
+    setVisitaEmAtendimento({ ...visita, status: "Em andamento", iniciada_em: new Date().toISOString() });
   }
 
   const visitasPorBusca = useMemo(
@@ -187,6 +208,7 @@ export default function AgendaPage() {
                 hoje={hoje}
                 onEdit={handleEditarVisita}
                 onConcluir={setVisitaEmAtendimento}
+                onIniciar={handleIniciarVisita}
                 onArchive={handleAlterarCancelamento}
               />
             </section>

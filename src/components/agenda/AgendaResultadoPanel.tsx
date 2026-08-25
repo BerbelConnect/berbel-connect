@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { AgendaResultadoFormData, AgendaVisita } from "@/types/agenda";
+import { nomeExibicaoVisita, type AgendaResultadoFormData, type AgendaVisita } from "@/types/agenda";
 
 type Props = {
   visita: AgendaVisita;
@@ -22,16 +22,18 @@ type SpeechRecognitionInstance = {
 };
 
 export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Props) {
-  const [form, setForm] = useState<AgendaResultadoFormData>({
-    pessoa_atendida: visita.pessoa_atendida || "",
-    resultado: visita.resultado || "",
-    proxima_acao: visita.proxima_acao || "",
-    data_retorno: visita.data_retorno || "",
-    hora_retorno: visita.hora_visita?.slice(0, 5) || "",
-    lembrete_em: visita.lembrete_em?.slice(0, 16) || "",
-    agendar_retorno: false,
+  const chaveRascunho = `berbel_agenda_rascunho_${visita.id}`;
+  const [form, setForm] = useState<AgendaResultadoFormData>(() => {
+    const inicial = { pessoa_atendida: visita.pessoa_atendida || "", resultado: visita.resultado || "", proxima_acao: visita.proxima_acao || "", data_retorno: visita.data_retorno || "", hora_retorno: visita.hora_visita?.slice(0, 5) || "", lembrete_em: visita.lembrete_em?.slice(0, 16) || "", agendar_retorno: false };
+    if (typeof window === "undefined") return inicial;
+    try { return JSON.parse(localStorage.getItem(chaveRascunho) || "") as AgendaResultadoFormData; } catch { return inicial; }
   });
   const [ouvindo, setOuvindo] = useState(false);
+
+  function atualizar(novo: AgendaResultadoFormData) {
+    setForm(novo);
+    localStorage.setItem(chaveRascunho, JSON.stringify(novo));
+  }
 
   function ditarResultado() {
     const speechWindow = window as typeof window & {
@@ -46,7 +48,7 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Prop
     recognition.interimResults = false;
     recognition.onresult = (event) => {
       const texto = event.results[0]?.[0]?.transcript || "";
-      setForm((atual) => ({ ...atual, resultado: [atual.resultado, texto].filter(Boolean).join(" ") }));
+      setForm((atual) => { const novo = { ...atual, resultado: [atual.resultado, texto].filter(Boolean).join(" ") }; localStorage.setItem(chaveRascunho, JSON.stringify(novo)); return novo; });
     };
     recognition.onerror = () => setOuvindo(false);
     recognition.onend = () => setOuvindo(false);
@@ -56,9 +58,9 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Prop
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-      <section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+      <section onBlur={() => localStorage.setItem(chaveRascunho, JSON.stringify(form))} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-4">
-          <div><p className="text-sm text-slate-500">Registrar atendimento</p><h3 className="text-xl font-bold">{visita.clientes?.razao_social || "Visita"}</h3></div>
+          <div><p className="text-sm text-slate-500">Registrar atendimento — rascunho salvo neste celular</p><h3 className="text-xl font-bold">{nomeExibicaoVisita(visita)}</h3></div>
           <button onClick={onClose} className="rounded-lg border px-3 py-2">Fechar</button>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -75,7 +77,7 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Prop
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
           <button disabled={salvando || !form.resultado.trim()} onClick={() => onSave(form)} className="rounded-xl bg-green-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Concluir e salvar"}</button>
-          <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white">Criar pedido</Link>
+          {visita.cliente_id && <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white">Criar pedido</Link>}
           <button onClick={onClose} className="rounded-xl border px-5 py-3 font-semibold">Continuar depois</button>
         </div>
       </section>

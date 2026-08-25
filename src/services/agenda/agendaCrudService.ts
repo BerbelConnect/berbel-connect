@@ -2,12 +2,17 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import type { AgendaResultadoFormData, AgendaVisita, AgendaVisitaFormData } from "@/types/agenda";
 import { alterarArquivamentoComercial } from "@/services/arquivamentoComercial";
+import { enfileirarOperacaoAgenda, navegadorOnline } from "../../lib/offline/agendaOffline";
 
-export async function salvarVisita(
+export async function salvarVisitaOnline(
   form: AgendaVisitaFormData
 ): Promise<PostgrestError | null> {
   const payload = {
-    cliente_id: form.cliente_id,
+    cliente_id: form.contato_avulso ? null : form.cliente_id,
+    contato_avulso_nome: form.contato_avulso ? form.contato_avulso_nome.trim() : null,
+    contato_avulso_empresa: form.contato_avulso ? form.contato_avulso_empresa.trim() || null : null,
+    contato_avulso_telefone: form.contato_avulso ? form.contato_avulso_telefone.trim() || null : null,
+    contato_avulso_endereco: form.contato_avulso ? form.contato_avulso_endereco.trim() || null : null,
     data_visita: form.data_visita,
     hora_visita: form.hora_visita || null,
     tipo_contato: form.tipo_contato,
@@ -31,7 +36,16 @@ export async function salvarVisita(
   return error;
 }
 
-export async function registrarResultadoVisita(
+export async function salvarVisita(form: AgendaVisitaFormData): Promise<Error | null> {
+  if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "salvar", form }); return null; }
+  try {
+    const error = await salvarVisitaOnline(form);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "salvar", form }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "salvar", form }); return null; }
+}
+
+export async function registrarResultadoVisitaOnline(
   visita: AgendaVisita,
   form: AgendaResultadoFormData
 ): Promise<PostgrestError | null> {
@@ -50,6 +64,28 @@ export async function registrarResultadoVisita(
   });
 
   return error;
+}
+
+export async function registrarResultadoVisita(visita: AgendaVisita, form: AgendaResultadoFormData): Promise<Error | null> {
+  if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
+  try {
+    const error = await registrarResultadoVisitaOnline(visita, form);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
+}
+
+export async function iniciarVisitaOnline(id: string): Promise<Error | null> {
+  const { error } = await supabase.from("visitas").update({ status: "Em andamento", iniciada_em: new Date().toISOString() }).eq("id", id);
+  return error;
+}
+export async function iniciarVisita(id: string): Promise<Error | null> {
+  if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "iniciar", visita_id: id }); return null; }
+  try {
+    const error = await iniciarVisitaOnline(id);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "iniciar", visita_id: id }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "iniciar", visita_id: id }); return null; }
 }
 
 export async function concluirVisita(

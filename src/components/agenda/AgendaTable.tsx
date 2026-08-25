@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { AgendaVisita } from "@/types/agenda";
+import { nomeExibicaoVisita, type AgendaVisita } from "@/types/agenda";
 import { moeda } from "@/lib/agendaHelpers";
 
 type AgendaTableProps = {
@@ -7,6 +7,7 @@ type AgendaTableProps = {
   hoje: string;
   onEdit: (visita: AgendaVisita) => void;
   onConcluir: (visita: AgendaVisita) => void;
+  onIniciar: (visita: AgendaVisita) => void;
   onArchive: (visita: AgendaVisita) => void;
 };
 
@@ -15,6 +16,7 @@ export function AgendaTable({
   hoje,
   onEdit,
   onConcluir,
+  onIniciar,
   onArchive,
 }: AgendaTableProps) {
   return (
@@ -24,7 +26,7 @@ export function AgendaTable({
           <div className="flex flex-wrap justify-between gap-4">
             <div>
               <p className="text-lg font-bold text-slate-800">
-                {visita.clientes?.razao_social || "-"}
+                {nomeExibicaoVisita(visita)}
               </p>
 
               <p className="text-sm text-slate-500">
@@ -62,6 +64,7 @@ export function AgendaTable({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
+            {visita.status === "Agendada" && <button onClick={() => onIniciar(visita)} className="rounded-lg bg-amber-100 px-3 py-2 font-semibold text-amber-800">Iniciar visita</button>}
             <button
               onClick={() => onEdit(visita)}
               className="rounded-lg border px-3 py-2"
@@ -84,7 +87,7 @@ export function AgendaTable({
             >
               {visita.status === "Cancelada" ? "Reabrir" : "Cancelar"}
             </button>
-            <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700">Criar pedido</Link>
+            {visita.cliente_id && <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700">Criar pedido</Link>}
           </div>
         </div>
       ))}

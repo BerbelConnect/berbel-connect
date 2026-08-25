@@ -4,16 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { contarPedidosOffline } from "@/lib/offline/pedidosOffline";
 import { sincronizarPedidosOffline } from "@/lib/offline/sincronizarPedidosOffline";
+import { contarOperacoesAgendaOffline } from "@/lib/offline/agendaOffline";
+import { sincronizarAgendaOffline } from "@/lib/offline/sincronizarAgendaOffline";
 
 export function OfflineStatus() {
   const [online, setOnline] = useState(true);
   const [pendentes, setPendentes] = useState(0);
+  const [agendaPendentes, setAgendaPendentes] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
   const [ultimaMensagem, setUltimaMensagem] = useState("");
 
   function atualizarStatus() {
     setOnline(navigator.onLine);
     setPendentes(contarPedidosOffline());
+    setAgendaPendentes(contarOperacoesAgendaOffline());
   }
 
   useEffect(() => {
@@ -42,6 +46,7 @@ export function OfflineStatus() {
       "berbel:pedidos-offline-atualizados",
       aoAtualizarFila
     );
+    window.addEventListener("berbel:agenda-offline-atualizada", aoAtualizarFila);
 
     return () => {
       window.removeEventListener("online", aoVoltarInternet);
@@ -51,6 +56,7 @@ export function OfflineStatus() {
         "berbel:pedidos-offline-atualizados",
         aoAtualizarFila
       );
+      window.removeEventListener("berbel:agenda-offline-atualizada", aoAtualizarFila);
     };
   }, []);
 
@@ -60,25 +66,26 @@ export function OfflineStatus() {
       return;
     }
 
-    if (pendentes === 0) {
-      alert("Não há pedidos offline para sincronizar.");
+    if (pendentes === 0 && agendaPendentes === 0) {
+      alert("Não há registros offline para sincronizar.");
       return;
     }
 
     setSincronizando(true);
 
     const resultado = await sincronizarPedidosOffline();
+    const resultadoAgenda = await sincronizarAgendaOffline();
 
     setSincronizando(false);
-    setUltimaMensagem(resultado.mensagem);
+    setUltimaMensagem([resultado.mensagem, resultadoAgenda.mensagem].join(" "));
     atualizarStatus();
 
-    alert(resultado.mensagem);
+    alert([resultado.mensagem, resultadoAgenda.mensagem].join("\n"));
 
     window.dispatchEvent(new Event("berbel:pedidos-offline-atualizados"));
   }
 
-  if (online && pendentes === 0 && !ultimaMensagem) return null;
+  if (online && pendentes === 0 && agendaPendentes === 0 && !ultimaMensagem) return null;
 
   return (
     <div className="fixed bottom-4 left-4 z-50 max-w-[90vw] rounded-2xl bg-slate-900 p-4 text-sm text-white shadow-2xl">
@@ -99,10 +106,11 @@ export function OfflineStatus() {
           {pendentes} pedido(s) aguardando sincronização.
         </p>
       )}
+      {agendaPendentes > 0 && <p className="mt-1 text-yellow-300">{agendaPendentes} registro(s) da agenda aguardando sincronização.</p>}
 
       {ultimaMensagem && <p className="mt-1 text-slate-300">{ultimaMensagem}</p>}
 
-      {online && pendentes > 0 && (
+      {online && (pendentes > 0 || agendaPendentes > 0) && (
         <div className="mt-3">
           <div className="flex flex-wrap gap-2">
             <button
@@ -123,7 +131,7 @@ export function OfflineStatus() {
         </div>
       )}
 
-      {online && pendentes === 0 && ultimaMensagem && (
+      {online && pendentes === 0 && agendaPendentes === 0 && ultimaMensagem && (
         <button
           onClick={() => setUltimaMensagem("")}
           className="mt-3 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-600"
