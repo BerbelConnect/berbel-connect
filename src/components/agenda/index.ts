@@ -6,3 +6,4 @@ export * from "./AgendaCalendar";
 export * from "./AgendaResultadoPanel";
 export * from "./AgendaViewSelector";
 export * from "./AgendaAtencao";
+export * from "./AgendaFotos";

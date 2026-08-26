@@ -1,4 +1,4 @@
-const VERSAO = "v5";
+const VERSAO = "v6";
 const PREFIXO = "berbel-connect-";
 const CACHE_SHELL = `${PREFIXO}shell-${VERSAO}`;
 const CACHE_PAGINAS = `${PREFIXO}paginas-${VERSAO}`;
