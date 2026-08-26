@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AgendaAtencao, AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
+import { AgendaAtencao, AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaLembretes, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
 import type {
   AgendaCliente,
   AgendaVisita,
@@ -47,6 +47,9 @@ const inicial: AgendaVisitaFormData = {
   proxima_acao: "",
   data_retorno: "",
   lembrete_em: "",
+  lembrete_antecedencia_minutos: 30,
+  lembrete_repetir: true,
+  lembrete_intervalo_minutos: 30,
   prioridade: "Normal",
   prazo_resolucao: "",
   checklist: [],
@@ -127,6 +130,9 @@ export default function AgendaPage() {
       proxima_acao: visita.proxima_acao || "",
       data_retorno: visita.data_retorno || "",
       lembrete_em: visita.lembrete_em?.slice(0, 16) || "",
+      lembrete_antecedencia_minutos: visita.lembrete_antecedencia_minutos ?? 30,
+      lembrete_repetir: visita.lembrete_repetir ?? true,
+      lembrete_intervalo_minutos: visita.lembrete_intervalo_minutos ?? 30,
       prioridade: visita.prioridade || "Normal",
       prazo_resolucao: visita.prazo_resolucao || "",
       checklist: visita.checklist || [],
@@ -218,6 +224,7 @@ export default function AgendaPage() {
             />
 
             <AgendaAtencao visitas={visitas} hoje={hojeISO()} onAbrir={setVisitaEmAtendimento} />
+            <AgendaLembretes visitas={visitas} onAbrir={setVisitaEmAtendimento} />
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <AgendaFilters busca={busca} onBuscaChange={setBusca} />

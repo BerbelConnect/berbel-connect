@@ -150,6 +150,20 @@ export function AgendaForm({
 
         <label className="text-sm font-semibold text-slate-600">Lembrete<input type="datetime-local" value={form.lembrete_em} onChange={(e) => onChange({ ...form, lembrete_em: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3" /></label>
 
+        <label className="text-sm font-semibold text-slate-600">Avisar antes do compromisso
+          <select value={form.lembrete_antecedencia_minutos} onChange={(e) => onChange({ ...form, lembrete_antecedencia_minutos: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3">
+            <option value={0}>No horário</option><option value={15}>15 minutos antes</option><option value={30}>30 minutos antes</option><option value={60}>1 hora antes</option><option value={1440}>1 dia antes</option>
+          </select>
+        </label>
+
+        <label className="text-sm font-semibold text-slate-600">Repetir aviso
+          <select value={form.lembrete_intervalo_minutos} disabled={!form.lembrete_repetir} onChange={(e) => onChange({ ...form, lembrete_intervalo_minutos: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 disabled:bg-slate-100">
+            <option value={15}>A cada 15 minutos</option><option value={30}>A cada 30 minutos</option><option value={60}>A cada hora</option><option value={1440}>Uma vez por dia</option>
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3"><input type="checkbox" checked={form.lembrete_repetir} onChange={(e) => onChange({ ...form, lembrete_repetir: e.target.checked })} />Lembrar novamente até resolver</label>
+
         <textarea
           placeholder="Observações"
           value={form.observacoes}

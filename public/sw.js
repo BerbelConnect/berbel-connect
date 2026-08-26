@@ -1,4 +1,4 @@
-const VERSAO = "v6";
+const VERSAO = "v7";
 const PREFIXO = "berbel-connect-";
 const CACHE_SHELL = `${PREFIXO}shell-${VERSAO}`;
 const CACHE_PAGINAS = `${PREFIXO}paginas-${VERSAO}`;
@@ -80,4 +80,14 @@ self.addEventListener("fetch", (event) => {
   if (["style", "script", "image", "font"].includes(request.destination)) {
     event.respondWith(atualizarEmSegundoPlano(request));
   }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destino = event.notification.data?.url || "/agenda";
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((janelas) => {
+    const aberta = janelas.find((janela) => new URL(janela.url).pathname === destino);
+    if (aberta) return aberta.focus();
+    return clients.openWindow(destino);
+  }));
 });

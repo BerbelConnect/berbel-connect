@@ -39,6 +39,9 @@ export type AgendaVisita = {
   proxima_acao?: string | null;
   data_retorno?: string | null;
   lembrete_em?: string | null;
+  lembrete_antecedencia_minutos?: number | null;
+  lembrete_repetir?: boolean | null;
+  lembrete_intervalo_minutos?: number | null;
   concluida?: boolean | null;
   iniciada_em?: string | null;
   prioridade?: "Baixa" | "Normal" | "Alta" | "Urgente" | null;
@@ -69,6 +72,9 @@ export type AgendaVisitaFormData = {
   proxima_acao: string;
   data_retorno: string;
   lembrete_em: string;
+  lembrete_antecedencia_minutos: number;
+  lembrete_repetir: boolean;
+  lembrete_intervalo_minutos: number;
   prioridade: "Baixa" | "Normal" | "Alta" | "Urgente";
   prazo_resolucao: string;
   checklist: AgendaChecklistItem[];
