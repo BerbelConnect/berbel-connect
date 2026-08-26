@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { nomeExibicaoVisita, type AgendaResultadoFormData, type AgendaVisita } from "@/types/agenda";
+import { AgendaFotos } from "./AgendaFotos";
 
 type Props = {
   visita: AgendaVisita;
@@ -65,6 +66,7 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave, onCont
           <button onClick={onClose} className="rounded-lg border px-3 py-2">Fechar</button>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <AgendaFotos visitaId={visita.id} />
           <div className="rounded-xl border bg-slate-50 p-4 md:col-span-2">
             <div className="mb-3 flex items-center justify-between"><p className="font-semibold">Checklist</p><span className="text-sm text-slate-500">{form.checklist.filter((item) => item.concluido).length}/{form.checklist.length}</span></div>
             <div className="space-y-2">

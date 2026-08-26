@@ -6,18 +6,22 @@ import { contarPedidosOffline } from "@/lib/offline/pedidosOffline";
 import { sincronizarPedidosOffline } from "@/lib/offline/sincronizarPedidosOffline";
 import { contarOperacoesAgendaOffline } from "@/lib/offline/agendaOffline";
 import { sincronizarAgendaOffline } from "@/lib/offline/sincronizarAgendaOffline";
+import { contarFotosAgendaOffline } from "@/lib/offline/agendaFotosOffline";
+import { sincronizarFotosAgendaOffline } from "@/services/agenda/agendaFotosService";
 
 export function OfflineStatus() {
   const [online, setOnline] = useState(true);
   const [pendentes, setPendentes] = useState(0);
   const [agendaPendentes, setAgendaPendentes] = useState(0);
+  const [fotosPendentes, setFotosPendentes] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
   const [ultimaMensagem, setUltimaMensagem] = useState("");
 
-  function atualizarStatus() {
+  async function atualizarStatus() {
     setOnline(navigator.onLine);
     setPendentes(contarPedidosOffline());
     setAgendaPendentes(contarOperacoesAgendaOffline());
+    setFotosPendentes(await contarFotosAgendaOffline());
   }
 
   useEffect(() => {
@@ -47,6 +51,7 @@ export function OfflineStatus() {
       aoAtualizarFila
     );
     window.addEventListener("berbel:agenda-offline-atualizada", aoAtualizarFila);
+    window.addEventListener("berbel:agenda-fotos-atualizadas", aoAtualizarFila);
 
     return () => {
       window.removeEventListener("online", aoVoltarInternet);
@@ -57,6 +62,7 @@ export function OfflineStatus() {
         aoAtualizarFila
       );
       window.removeEventListener("berbel:agenda-offline-atualizada", aoAtualizarFila);
+      window.removeEventListener("berbel:agenda-fotos-atualizadas", aoAtualizarFila);
     };
   }, []);
 
@@ -66,7 +72,7 @@ export function OfflineStatus() {
       return;
     }
 
-    if (pendentes === 0 && agendaPendentes === 0) {
+    if (pendentes === 0 && agendaPendentes === 0 && fotosPendentes === 0) {
       alert("Não há registros offline para sincronizar.");
       return;
     }
@@ -75,17 +81,18 @@ export function OfflineStatus() {
 
     const resultado = await sincronizarPedidosOffline();
     const resultadoAgenda = await sincronizarAgendaOffline();
+    const resultadoFotos = await sincronizarFotosAgendaOffline();
 
     setSincronizando(false);
-    setUltimaMensagem([resultado.mensagem, resultadoAgenda.mensagem].join(" "));
+    setUltimaMensagem([resultado.mensagem, resultadoAgenda.mensagem, resultadoFotos.mensagem].join(" "));
     atualizarStatus();
 
-    alert([resultado.mensagem, resultadoAgenda.mensagem].join("\n"));
+    alert([resultado.mensagem, resultadoAgenda.mensagem, resultadoFotos.mensagem].join("\n"));
 
     window.dispatchEvent(new Event("berbel:pedidos-offline-atualizados"));
   }
 
-  if (online && pendentes === 0 && agendaPendentes === 0 && !ultimaMensagem) return null;
+  if (online && pendentes === 0 && agendaPendentes === 0 && fotosPendentes === 0 && !ultimaMensagem) return null;
 
   return (
     <div className="fixed bottom-4 left-4 z-50 max-w-[90vw] rounded-2xl bg-slate-900 p-4 text-sm text-white shadow-2xl">
@@ -107,10 +114,11 @@ export function OfflineStatus() {
         </p>
       )}
       {agendaPendentes > 0 && <p className="mt-1 text-yellow-300">{agendaPendentes} registro(s) da agenda aguardando sincronização.</p>}
+      {fotosPendentes > 0 && <p className="mt-1 text-yellow-300">{fotosPendentes} foto(s) da agenda aguardando sincronização.</p>}
 
       {ultimaMensagem && <p className="mt-1 text-slate-300">{ultimaMensagem}</p>}
 
-      {online && (pendentes > 0 || agendaPendentes > 0) && (
+      {online && (pendentes > 0 || agendaPendentes > 0 || fotosPendentes > 0) && (
         <div className="mt-3">
           <div className="flex flex-wrap gap-2">
             <button
@@ -131,7 +139,7 @@ export function OfflineStatus() {
         </div>
       )}
 
-      {online && pendentes === 0 && agendaPendentes === 0 && ultimaMensagem && (
+      {online && pendentes === 0 && agendaPendentes === 0 && fotosPendentes === 0 && ultimaMensagem && (
         <button
           onClick={() => setUltimaMensagem("")}
           className="mt-3 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-600"
