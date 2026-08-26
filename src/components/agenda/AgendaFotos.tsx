@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { adicionarFotosVisita, listarFotosVisita, removerFotoVisita } from "@/services/agenda/agendaFotosService";
 import type { AgendaFoto } from "@/types/agendaFotos";
 
-type Props = { visitaId: string };
+type Props = { visitaId: string; somenteLeitura?: boolean };
 
-export function AgendaFotos({ visitaId }: Props) {
+export function AgendaFotos({ visitaId, somenteLeitura = false }: Props) {
   const [fotos, setFotos] = useState<AgendaFoto[]>([]);
   const [carregando, setCarregando] = useState(false);
   const urlsLocais = useRef<string[]>([]);
@@ -50,10 +50,10 @@ export function AgendaFotos({ visitaId }: Props) {
     <div className="rounded-xl border bg-slate-50 p-4 md:col-span-2">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div><p className="font-semibold">Fotos da visita</p><p className="text-xs text-slate-500">As fotos ficam protegidas no aparelho até serem enviadas.</p></div>
-        <label className="cursor-pointer rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">
+        {!somenteLeitura && <label className="cursor-pointer rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">
           {carregando ? "Preparando..." : "Tirar ou escolher fotos"}
           <input type="file" accept="image/*" capture="environment" multiple disabled={carregando} onChange={(e) => { selecionar(e.target.files); e.target.value = ""; }} className="hidden" />
-        </label>
+        </label>}
       </div>
       {fotos.length === 0 && <p className="text-sm text-slate-500">Nenhuma foto adicionada.</p>}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -64,7 +64,7 @@ export function AgendaFotos({ visitaId }: Props) {
               <p className="truncate text-xs" title={foto.nome_arquivo}>{foto.nome_arquivo}</p>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className={`text-xs font-semibold ${foto.pendente ? "text-amber-700" : "text-green-700"}`}>{foto.pendente ? "Aguardando envio" : "Sincronizada"}</span>
-                <button type="button" onClick={() => remover(foto)} className="text-xs font-semibold text-red-600">Remover</button>
+                {!somenteLeitura && <button type="button" onClick={() => remover(foto)} className="text-xs font-semibold text-red-600">Remover</button>}
               </div>
             </div>
           </div>
