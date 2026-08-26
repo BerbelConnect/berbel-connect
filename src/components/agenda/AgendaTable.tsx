@@ -42,6 +42,8 @@ export function AgendaTable({
               </p>
 
               <p className="text-sm">Resultado: {visita.resultado || "-"}</p>
+              {(visita.checklist?.length || 0) > 0 && <p className="mt-2 text-sm font-semibold text-slate-600">Checklist: {visita.checklist?.filter((item) => item.concluido).length}/{visita.checklist?.length}</p>}
+              <p className="text-sm text-slate-500">Prioridade: {visita.prioridade || "Normal"}{visita.prazo_resolucao ? ` • Prazo: ${visita.prazo_resolucao}` : ""}</p>
             </div>
 
             <div className="text-right">

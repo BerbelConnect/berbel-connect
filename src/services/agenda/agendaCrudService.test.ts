@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgendaResultadoFormData, AgendaVisita } from "@/types/agenda";
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
+const { rpc, from, update, eq } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), update: vi.fn(), eq: vi.fn() }));
 
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc },
+  supabase: { rpc, from },
 }));
 
 vi.mock("@/services/arquivamentoComercial", () => ({
@@ -24,6 +24,7 @@ function resultado(parcial: Partial<AgendaResultadoFormData> = {}): AgendaResult
     hora_retorno: "09:30",
     lembrete_em: "",
     agendar_retorno: false,
+    checklist: [],
     ...parcial,
   };
 }
@@ -32,6 +33,9 @@ describe("resultado e retorno da agenda", () => {
   beforeEach(() => {
     rpc.mockReset();
     rpc.mockResolvedValue({ error: null });
+    eq.mockResolvedValue({ error: null });
+    update.mockReturnValue({ eq });
+    from.mockReturnValue({ update });
   });
 
   it("conclui a visita sem criar retorno quando a opção não está marcada", async () => {

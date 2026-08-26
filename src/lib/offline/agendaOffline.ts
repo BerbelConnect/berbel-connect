@@ -42,12 +42,15 @@ export function enfileirarOperacaoAgenda(operacao: NovaOperacaoAgenda) {
       proxima_acao: form.proxima_acao,
       data_retorno: form.data_retorno,
       lembrete_em: form.lembrete_em,
+      prioridade: form.prioridade,
+      prazo_resolucao: form.prazo_resolucao,
+      checklist: form.checklist,
     };
     gravar(VISITAS, [visita, ...visitas.filter((atual) => atual.id !== visita.id)]);
   } else if (item.tipo === "iniciar") {
     gravar(VISITAS, visitas.map((visita) => visita.id === item.visita_id ? { ...visita, status: "Em andamento", iniciada_em: item.criado_em } : visita));
   } else {
-    gravar(VISITAS, visitas.map((visita) => visita.id === item.visita.id ? { ...visita, status: "Concluída", concluida: true, pessoa_atendida: item.resultado.pessoa_atendida, resultado: item.resultado.resultado, proxima_acao: item.resultado.proxima_acao, data_retorno: item.resultado.data_retorno, lembrete_em: item.resultado.lembrete_em } : visita));
+    gravar(VISITAS, visitas.map((visita) => visita.id === item.visita.id ? { ...visita, status: "Concluída", concluida: true, pessoa_atendida: item.resultado.pessoa_atendida, resultado: item.resultado.resultado, proxima_acao: item.resultado.proxima_acao, data_retorno: item.resultado.data_retorno, lembrete_em: item.resultado.lembrete_em, checklist: item.resultado.checklist } : visita));
   }
   return item;
 }

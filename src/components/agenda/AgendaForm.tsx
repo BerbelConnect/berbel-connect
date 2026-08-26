@@ -1,5 +1,6 @@
+import { useState } from "react";
 import type { AgendaCliente, AgendaVisitaFormData } from "@/types/agenda";
-import { AGENDA_STATUS_OPTIONS, AGENDA_TIPOS_CONTATO } from "@/constants/agenda";
+import { AGENDA_PRIORIDADES, AGENDA_STATUS_OPTIONS, AGENDA_TIPOS_CONTATO } from "@/constants/agenda";
 
 type AgendaFormProps = {
   clientes: AgendaCliente[];
@@ -18,6 +19,14 @@ export function AgendaForm({
   onSubmit,
   onClear,
 }: AgendaFormProps) {
+  const [novaEtapa, setNovaEtapa] = useState("");
+
+  function adicionarEtapa() {
+    const texto = novaEtapa.trim();
+    if (!texto) return;
+    onChange({ ...form, checklist: [...form.checklist, { id: crypto.randomUUID(), texto, concluido: false }] });
+    setNovaEtapa("");
+  }
   return (
     <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
       <h3 className="mb-5 text-xl font-bold text-slate-800">
@@ -47,7 +56,18 @@ export function AgendaForm({
             </option>
           ))}
         </select>
+
         )}
+
+        <label className="text-sm font-semibold text-slate-600">Prioridade
+          <select value={form.prioridade} onChange={(e) => onChange({ ...form, prioridade: e.target.value as AgendaVisitaFormData["prioridade"] })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3">
+            {AGENDA_PRIORIDADES.map((prioridade) => <option key={prioridade}>{prioridade}</option>)}
+          </select>
+        </label>
+
+        <label className="text-sm font-semibold text-slate-600">Prazo para resolver
+          <input type="date" value={form.prazo_resolucao} onChange={(e) => onChange({ ...form, prazo_resolucao: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3" />
+        </label>
 
         <input
           type="date"
@@ -147,6 +167,18 @@ export function AgendaForm({
           />
           Gerar alerta de retorno
         </label>
+
+        <div className="rounded-xl border border-slate-200 p-4 md:col-span-4">
+          <p className="mb-3 font-semibold text-slate-700">Checklist da visita</p>
+          <div className="flex gap-2">
+            <input value={novaEtapa} onChange={(e) => setNovaEtapa(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarEtapa(); } }} placeholder="Ex.: apresentar catálogo" className="flex-1 rounded-xl border border-slate-200 px-4 py-3" />
+            <button type="button" onClick={adicionarEtapa} className="rounded-xl bg-slate-800 px-4 py-3 font-semibold text-white">Adicionar</button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {form.checklist.map((etapa) => <div key={etapa.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"><span>{etapa.texto}</span><button type="button" onClick={() => onChange({ ...form, checklist: form.checklist.filter((item) => item.id !== etapa.id) })} className="text-sm font-semibold text-red-600">Remover</button></div>)}
+            {form.checklist.length === 0 && <p className="text-sm text-slate-500">Nenhuma etapa adicionada.</p>}
+          </div>
+        </div>
       </div>
 
       <div className="mt-5 flex gap-3">

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
+import { AgendaAtencao, AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
 import type {
   AgendaCliente,
   AgendaVisita,
@@ -46,6 +46,9 @@ const inicial: AgendaVisitaFormData = {
   proxima_acao: "",
   data_retorno: "",
   lembrete_em: "",
+  prioridade: "Normal",
+  prazo_resolucao: "",
+  checklist: [],
 };
 
 export default function AgendaPage() {
@@ -123,6 +126,9 @@ export default function AgendaPage() {
       proxima_acao: visita.proxima_acao || "",
       data_retorno: visita.data_retorno || "",
       lembrete_em: visita.lembrete_em?.slice(0, 16) || "",
+      prioridade: visita.prioridade || "Normal",
+      prazo_resolucao: visita.prazo_resolucao || "",
+      checklist: visita.checklist || [],
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -195,6 +201,8 @@ export default function AgendaPage() {
               onSubmit={handleSalvarVisita}
               onClear={() => setForm(inicial)}
             />
+
+            <AgendaAtencao visitas={visitas} hoje={hojeISO()} onAbrir={setVisitaEmAtendimento} />
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <AgendaFilters busca={busca} onBuscaChange={setBusca} />

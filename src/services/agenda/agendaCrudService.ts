@@ -27,6 +27,9 @@ export async function salvarVisitaOnline(
     proxima_acao: form.proxima_acao || null,
     data_retorno: form.data_retorno || null,
     lembrete_em: form.lembrete_em || null,
+    prioridade: form.prioridade,
+    prazo_resolucao: form.prazo_resolucao || null,
+    checklist: form.checklist,
   };
 
   const { error } = form.id
@@ -49,6 +52,8 @@ export async function registrarResultadoVisitaOnline(
   visita: AgendaVisita,
   form: AgendaResultadoFormData
 ): Promise<PostgrestError | null> {
+  const { error: checklistError } = await supabase.from("visitas").update({ checklist: form.checklist }).eq("id", visita.id);
+  if (checklistError) return checklistError;
   const lembreteIso = form.lembrete_em
     ? new Date(form.lembrete_em).toISOString()
     : null;
