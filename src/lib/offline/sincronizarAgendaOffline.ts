@@ -1,5 +1,5 @@
 import { listarOperacoesAgendaOffline, navegadorOnline, removerOperacaoAgenda } from "./agendaOffline";
-import { iniciarVisitaOnline, registrarResultadoVisitaOnline, salvarVisitaOnline } from "../../services/agenda/agendaCrudService";
+import { iniciarVisitaOnline, registrarResultadoVisitaOnline, salvarProgressoVisitaOnline, salvarVisitaOnline } from "../../services/agenda/agendaCrudService";
 let executando = false;
 export async function sincronizarAgendaOffline() {
   if (!navegadorOnline()) return { sincronizados: 0, mensagem: "Ainda está sem internet." };
@@ -7,7 +7,7 @@ export async function sincronizarAgendaOffline() {
   executando = true; let sincronizados = 0;
   try {
     for (const item of listarOperacoesAgendaOffline()) {
-      const erro = item.tipo === "salvar" ? await salvarVisitaOnline(item.form) : item.tipo === "resultado" ? await registrarResultadoVisitaOnline(item.visita, item.resultado) : await iniciarVisitaOnline(item.visita_id);
+      const erro = item.tipo === "salvar" ? await salvarVisitaOnline(item.form) : item.tipo === "resultado" ? await registrarResultadoVisitaOnline(item.visita, item.resultado) : item.tipo === "progresso" ? await salvarProgressoVisitaOnline(item.visita, item.resultado) : await iniciarVisitaOnline(item.visita_id);
       if (erro) break;
       removerOperacaoAgenda(item.id); sincronizados += 1;
     }

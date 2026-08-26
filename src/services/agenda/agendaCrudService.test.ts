@@ -11,7 +11,7 @@ vi.mock("@/services/arquivamentoComercial", () => ({
   alterarArquivamentoComercial: vi.fn(),
 }));
 
-import { registrarResultadoVisita } from "./agendaCrudService";
+import { registrarResultadoVisita, salvarProgressoVisitaOnline } from "./agendaCrudService";
 
 const visita = { id: "visita-1" } as AgendaVisita;
 
@@ -82,5 +82,18 @@ describe("resultado e retorno da agenda", () => {
     rpc.mockResolvedValueOnce({ error });
 
     await expect(registrarResultadoVisita(visita, resultado())).resolves.toBe(error);
+  });
+
+  it("salva o progresso do checklist sem concluir a visita", async () => {
+    await expect(salvarProgressoVisitaOnline(visita, resultado({
+      resultado: "Atendimento em andamento",
+      checklist: [{ id: "etapa-1", texto: "Apresentar catálogo", concluido: true }],
+    }))).resolves.toBeNull();
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "Em andamento",
+      resultado: "Atendimento em andamento",
+      checklist: [{ id: "etapa-1", texto: "Apresentar catálogo", concluido: true }],
+    }));
   });
 });

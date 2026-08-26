@@ -17,6 +17,7 @@ import {
   atualizarCacheAgenda,
   iniciarVisita,
   registrarResultadoVisita,
+  salvarProgressoVisita,
   alterarCancelamentoVisita,
   salvarVisita as salvarVisitaService,
   filtrarVisitas,
@@ -144,6 +145,20 @@ export default function AgendaPage() {
     carregarDados();
   }
 
+  async function handleContinuarDepois(formResultado: AgendaResultadoFormData) {
+    if (!visitaEmAtendimento) return;
+    setCarregando(true);
+    const error = await salvarProgressoVisita(visitaEmAtendimento, formResultado);
+    setCarregando(false);
+    if (error) return alert(error.message);
+    localStorage.removeItem(`berbel_agenda_rascunho_${visitaEmAtendimento.id}`);
+    setVisitas((atuais) => atuais.map((visita) => visita.id === visitaEmAtendimento.id
+      ? { ...visita, status: "Em andamento", checklist: formResultado.checklist }
+      : visita));
+    setVisitaEmAtendimento(null);
+    carregarDados();
+  }
+
   async function handleAlterarCancelamento(visita: AgendaVisita) {
     const cancelar = visita.status !== "Cancelada";
     const motivo = prompt(cancelar ? "Informe o motivo do cancelamento:" : "Informe o motivo da reabertura:");
@@ -223,7 +238,7 @@ export default function AgendaPage() {
           </div>
         </section>
       </div>
-      {visitaEmAtendimento && <AgendaResultadoPanel visita={visitaEmAtendimento} salvando={carregando} onClose={() => setVisitaEmAtendimento(null)} onSave={handleRegistrarResultado} />}
+      {visitaEmAtendimento && <AgendaResultadoPanel visita={visitaEmAtendimento} salvando={carregando} onClose={() => setVisitaEmAtendimento(null)} onSave={handleRegistrarResultado} onContinue={handleContinuarDepois} />}
     </main>
   );
 }

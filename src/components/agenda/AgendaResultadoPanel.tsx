@@ -9,6 +9,7 @@ type Props = {
   salvando: boolean;
   onClose: () => void;
   onSave: (form: AgendaResultadoFormData) => void;
+  onContinue: (form: AgendaResultadoFormData) => void;
 };
 
 type SpeechRecognitionInstance = {
@@ -21,7 +22,7 @@ type SpeechRecognitionInstance = {
   start: () => void;
 };
 
-export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Props) {
+export function AgendaResultadoPanel({ visita, salvando, onClose, onSave, onContinue }: Props) {
   const chaveRascunho = `berbel_agenda_rascunho_${visita.id}`;
   const [form, setForm] = useState<AgendaResultadoFormData>(() => {
     const inicial = { pessoa_atendida: visita.pessoa_atendida || "", resultado: visita.resultado || "", proxima_acao: visita.proxima_acao || "", data_retorno: visita.data_retorno || "", hora_retorno: visita.hora_visita?.slice(0, 5) || "", lembrete_em: visita.lembrete_em?.slice(0, 16) || "", agendar_retorno: false, checklist: visita.checklist || [] };
@@ -85,7 +86,7 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Prop
         <div className="mt-6 flex flex-wrap gap-3">
           <button disabled={salvando || !form.resultado.trim()} onClick={() => onSave(form)} className="rounded-xl bg-green-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Concluir e salvar"}</button>
           {visita.cliente_id && <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white">Criar pedido</Link>}
-          <button onClick={onClose} className="rounded-xl border px-5 py-3 font-semibold">Continuar depois</button>
+          <button disabled={salvando} onClick={() => onContinue(form)} className="rounded-xl border px-5 py-3 font-semibold disabled:opacity-50">{salvando ? "Salvando..." : "Continuar depois"}</button>
         </div>
       </section>
     </div>
