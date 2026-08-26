@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
+import { AgendaAtencao, AgendaCalendar, AgendaCards, AgendaFilters, AgendaForm, AgendaResultadoPanel, AgendaTable, AgendaViewSelector } from "@/components/agenda";
 import type {
   AgendaCliente,
   AgendaVisita,
@@ -17,6 +17,7 @@ import {
   atualizarCacheAgenda,
   iniciarVisita,
   registrarResultadoVisita,
+  salvarProgressoVisita,
   alterarCancelamentoVisita,
   salvarVisita as salvarVisitaService,
   filtrarVisitas,
@@ -46,6 +47,9 @@ const inicial: AgendaVisitaFormData = {
   proxima_acao: "",
   data_retorno: "",
   lembrete_em: "",
+  prioridade: "Normal",
+  prazo_resolucao: "",
+  checklist: [],
 };
 
 export default function AgendaPage() {
@@ -123,6 +127,9 @@ export default function AgendaPage() {
       proxima_acao: visita.proxima_acao || "",
       data_retorno: visita.data_retorno || "",
       lembrete_em: visita.lembrete_em?.slice(0, 16) || "",
+      prioridade: visita.prioridade || "Normal",
+      prazo_resolucao: visita.prazo_resolucao || "",
+      checklist: visita.checklist || [],
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -134,6 +141,20 @@ export default function AgendaPage() {
     const error = await registrarResultadoVisita(visitaEmAtendimento, formResultado);
     setCarregando(false);
     if (error) return alert(error.message);
+    setVisitaEmAtendimento(null);
+    carregarDados();
+  }
+
+  async function handleContinuarDepois(formResultado: AgendaResultadoFormData) {
+    if (!visitaEmAtendimento) return;
+    setCarregando(true);
+    const error = await salvarProgressoVisita(visitaEmAtendimento, formResultado);
+    setCarregando(false);
+    if (error) return alert(error.message);
+    localStorage.removeItem(`berbel_agenda_rascunho_${visitaEmAtendimento.id}`);
+    setVisitas((atuais) => atuais.map((visita) => visita.id === visitaEmAtendimento.id
+      ? { ...visita, status: "Em andamento", checklist: formResultado.checklist }
+      : visita));
     setVisitaEmAtendimento(null);
     carregarDados();
   }
@@ -196,6 +217,8 @@ export default function AgendaPage() {
               onClear={() => setForm(inicial)}
             />
 
+            <AgendaAtencao visitas={visitas} hoje={hojeISO()} onAbrir={setVisitaEmAtendimento} />
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <AgendaFilters busca={busca} onBuscaChange={setBusca} />
 
@@ -215,7 +238,7 @@ export default function AgendaPage() {
           </div>
         </section>
       </div>
-      {visitaEmAtendimento && <AgendaResultadoPanel visita={visitaEmAtendimento} salvando={carregando} onClose={() => setVisitaEmAtendimento(null)} onSave={handleRegistrarResultado} />}
+      {visitaEmAtendimento && <AgendaResultadoPanel visita={visitaEmAtendimento} salvando={carregando} onClose={() => setVisitaEmAtendimento(null)} onSave={handleRegistrarResultado} onContinue={handleContinuarDepois} />}
     </main>
   );
 }

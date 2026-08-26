@@ -12,6 +12,12 @@ export type AgendaVisitaClientesRelation = {
   estado?: string;
 };
 
+export type AgendaChecklistItem = {
+  id: string;
+  texto: string;
+  concluido: boolean;
+};
+
 export type AgendaVisita = {
   id: string;
   cliente_id: string | null;
@@ -35,6 +41,9 @@ export type AgendaVisita = {
   lembrete_em?: string | null;
   concluida?: boolean | null;
   iniciada_em?: string | null;
+  prioridade?: "Baixa" | "Normal" | "Alta" | "Urgente" | null;
+  prazo_resolucao?: string | null;
+  checklist?: AgendaChecklistItem[] | null;
   clientes?: AgendaVisitaClientesRelation | null;
 };
 
@@ -60,6 +69,9 @@ export type AgendaVisitaFormData = {
   proxima_acao: string;
   data_retorno: string;
   lembrete_em: string;
+  prioridade: "Baixa" | "Normal" | "Alta" | "Urgente";
+  prazo_resolucao: string;
+  checklist: AgendaChecklistItem[];
 };
 
 export type AgendaVisualizacao = "dia" | "semana" | "mes";
@@ -72,6 +84,7 @@ export type AgendaResultadoFormData = {
   hora_retorno: string;
   lembrete_em: string;
   agendar_retorno: boolean;
+  checklist: AgendaChecklistItem[];
 };
 
 export type AgendaResumo = {

@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgendaResultadoFormData, AgendaVisita } from "@/types/agenda";
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
+const { rpc, from, update, eq } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), update: vi.fn(), eq: vi.fn() }));
 
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc },
+  supabase: { rpc, from },
 }));
 
 vi.mock("@/services/arquivamentoComercial", () => ({
   alterarArquivamentoComercial: vi.fn(),
 }));
 
-import { registrarResultadoVisita } from "./agendaCrudService";
+import { registrarResultadoVisita, salvarProgressoVisitaOnline } from "./agendaCrudService";
 
 const visita = { id: "visita-1" } as AgendaVisita;
 
@@ -24,6 +24,7 @@ function resultado(parcial: Partial<AgendaResultadoFormData> = {}): AgendaResult
     hora_retorno: "09:30",
     lembrete_em: "",
     agendar_retorno: false,
+    checklist: [],
     ...parcial,
   };
 }
@@ -32,6 +33,9 @@ describe("resultado e retorno da agenda", () => {
   beforeEach(() => {
     rpc.mockReset();
     rpc.mockResolvedValue({ error: null });
+    eq.mockResolvedValue({ error: null });
+    update.mockReturnValue({ eq });
+    from.mockReturnValue({ update });
   });
 
   it("conclui a visita sem criar retorno quando a opção não está marcada", async () => {
@@ -78,5 +82,18 @@ describe("resultado e retorno da agenda", () => {
     rpc.mockResolvedValueOnce({ error });
 
     await expect(registrarResultadoVisita(visita, resultado())).resolves.toBe(error);
+  });
+
+  it("salva o progresso do checklist sem concluir a visita", async () => {
+    await expect(salvarProgressoVisitaOnline(visita, resultado({
+      resultado: "Atendimento em andamento",
+      checklist: [{ id: "etapa-1", texto: "Apresentar catálogo", concluido: true }],
+    }))).resolves.toBeNull();
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "Em andamento",
+      resultado: "Atendimento em andamento",
+      checklist: [{ id: "etapa-1", texto: "Apresentar catálogo", concluido: true }],
+    }));
   });
 });

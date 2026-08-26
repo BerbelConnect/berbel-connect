@@ -27,6 +27,9 @@ export async function salvarVisitaOnline(
     proxima_acao: form.proxima_acao || null,
     data_retorno: form.data_retorno || null,
     lembrete_em: form.lembrete_em || null,
+    prioridade: form.prioridade,
+    prazo_resolucao: form.prazo_resolucao || null,
+    checklist: form.checklist,
   };
 
   const { error } = form.id
@@ -49,6 +52,8 @@ export async function registrarResultadoVisitaOnline(
   visita: AgendaVisita,
   form: AgendaResultadoFormData
 ): Promise<PostgrestError | null> {
+  const { error: checklistError } = await supabase.from("visitas").update({ checklist: form.checklist }).eq("id", visita.id);
+  if (checklistError) return checklistError;
   const lembreteIso = form.lembrete_em
     ? new Date(form.lembrete_em).toISOString()
     : null;
@@ -73,6 +78,29 @@ export async function registrarResultadoVisita(visita: AgendaVisita, form: Agend
     if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
     return error;
   } catch { enfileirarOperacaoAgenda({ tipo: "resultado", visita, resultado: form }); return null; }
+}
+
+export async function salvarProgressoVisitaOnline(visita: AgendaVisita, form: AgendaResultadoFormData): Promise<PostgrestError | null> {
+  const lembreteIso = form.lembrete_em ? new Date(form.lembrete_em).toISOString() : null;
+  const { error } = await supabase.from("visitas").update({
+    status: "Em andamento",
+    pessoa_atendida: form.pessoa_atendida || null,
+    resultado: form.resultado,
+    proxima_acao: form.proxima_acao || null,
+    data_retorno: form.data_retorno || null,
+    lembrete_em: lembreteIso,
+    checklist: form.checklist,
+  }).eq("id", visita.id);
+  return error;
+}
+
+export async function salvarProgressoVisita(visita: AgendaVisita, form: AgendaResultadoFormData): Promise<Error | null> {
+  if (!navegadorOnline()) { enfileirarOperacaoAgenda({ tipo: "progresso", visita, resultado: form }); return null; }
+  try {
+    const error = await salvarProgressoVisitaOnline(visita, form);
+    if (error && /fetch|network|conex/i.test(error.message)) { enfileirarOperacaoAgenda({ tipo: "progresso", visita, resultado: form }); return null; }
+    return error;
+  } catch { enfileirarOperacaoAgenda({ tipo: "progresso", visita, resultado: form }); return null; }
 }
 
 export async function iniciarVisitaOnline(id: string): Promise<Error | null> {

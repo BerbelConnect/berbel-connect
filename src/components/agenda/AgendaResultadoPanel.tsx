@@ -9,6 +9,7 @@ type Props = {
   salvando: boolean;
   onClose: () => void;
   onSave: (form: AgendaResultadoFormData) => void;
+  onContinue: (form: AgendaResultadoFormData) => void;
 };
 
 type SpeechRecognitionInstance = {
@@ -21,12 +22,12 @@ type SpeechRecognitionInstance = {
   start: () => void;
 };
 
-export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Props) {
+export function AgendaResultadoPanel({ visita, salvando, onClose, onSave, onContinue }: Props) {
   const chaveRascunho = `berbel_agenda_rascunho_${visita.id}`;
   const [form, setForm] = useState<AgendaResultadoFormData>(() => {
-    const inicial = { pessoa_atendida: visita.pessoa_atendida || "", resultado: visita.resultado || "", proxima_acao: visita.proxima_acao || "", data_retorno: visita.data_retorno || "", hora_retorno: visita.hora_visita?.slice(0, 5) || "", lembrete_em: visita.lembrete_em?.slice(0, 16) || "", agendar_retorno: false };
+    const inicial = { pessoa_atendida: visita.pessoa_atendida || "", resultado: visita.resultado || "", proxima_acao: visita.proxima_acao || "", data_retorno: visita.data_retorno || "", hora_retorno: visita.hora_visita?.slice(0, 5) || "", lembrete_em: visita.lembrete_em?.slice(0, 16) || "", agendar_retorno: false, checklist: visita.checklist || [] };
     if (typeof window === "undefined") return inicial;
-    try { return JSON.parse(localStorage.getItem(chaveRascunho) || "") as AgendaResultadoFormData; } catch { return inicial; }
+    try { const salvo = JSON.parse(localStorage.getItem(chaveRascunho) || "") as Partial<AgendaResultadoFormData>; return { ...inicial, ...salvo, checklist: Array.isArray(salvo.checklist) ? salvo.checklist : inicial.checklist }; } catch { return inicial; }
   });
   const [ouvindo, setOuvindo] = useState(false);
 
@@ -64,6 +65,13 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Prop
           <button onClick={onClose} className="rounded-lg border px-3 py-2">Fechar</button>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="rounded-xl border bg-slate-50 p-4 md:col-span-2">
+            <div className="mb-3 flex items-center justify-between"><p className="font-semibold">Checklist</p><span className="text-sm text-slate-500">{form.checklist.filter((item) => item.concluido).length}/{form.checklist.length}</span></div>
+            <div className="space-y-2">
+              {form.checklist.map((etapa) => <label key={etapa.id} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2"><input type="checkbox" checked={etapa.concluido} onChange={(e) => atualizar({ ...form, checklist: form.checklist.map((item) => item.id === etapa.id ? { ...item, concluido: e.target.checked } : item) })} /><span className={etapa.concluido ? "text-slate-400 line-through" : ""}>{etapa.texto}</span></label>)}
+              {form.checklist.length === 0 && <p className="text-sm text-slate-500">Esta visita não possui etapas.</p>}
+            </div>
+          </div>
           <input placeholder="Pessoa atendida" value={form.pessoa_atendida} onChange={(e) => setForm({ ...form, pessoa_atendida: e.target.value })} className="rounded-xl border px-4 py-3" />
           <input placeholder="Próxima ação" value={form.proxima_acao} onChange={(e) => setForm({ ...form, proxima_acao: e.target.value })} className="rounded-xl border px-4 py-3" />
           <div className="md:col-span-2">
@@ -78,7 +86,7 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave }: Prop
         <div className="mt-6 flex flex-wrap gap-3">
           <button disabled={salvando || !form.resultado.trim()} onClick={() => onSave(form)} className="rounded-xl bg-green-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Concluir e salvar"}</button>
           {visita.cliente_id && <Link href={`/pedidos?cliente_id=${encodeURIComponent(visita.cliente_id)}`} className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white">Criar pedido</Link>}
-          <button onClick={onClose} className="rounded-xl border px-5 py-3 font-semibold">Continuar depois</button>
+          <button disabled={salvando} onClick={() => onContinue(form)} className="rounded-xl border px-5 py-3 font-semibold disabled:opacity-50">{salvando ? "Salvando..." : "Continuar depois"}</button>
         </div>
       </section>
     </div>

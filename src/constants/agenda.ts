@@ -1,6 +1,7 @@
 export const AGENDA_STATUS_OPTIONS = [
   "Agendada",
   "Em andamento",
+  "Aguardando retorno",
   "Concluída",
   "Remarcar",
   "Cancelada",
@@ -16,6 +17,7 @@ export const AGENDA_TIPOS_CONTATO = [
 ] as const;
 
 export const AGENDA_STATUS_DEFAULT = "Agendada";
+export const AGENDA_PRIORIDADES = ["Baixa", "Normal", "Alta", "Urgente"] as const;
 export const AGENDA_TIPO_CONTATO_DEFAULT = "Presencial";
 
 export const AGENDA_WHATSAPP_PLACEHOLDER =
