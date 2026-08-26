@@ -11,4 +11,8 @@ describe("central precisa de atenção", () => {
     expect(itens[0].motivos).toContain("Checklist incompleto");
   });
   it("ignora visita cancelada", () => expect(listarVisitasQuePrecisamAtencao([{ ...base, status: "Cancelada" }], "2026-08-25")).toEqual([]));
+  it("mantém compromisso transferido na central até resolver", () => {
+    const itens = listarVisitasQuePrecisamAtencao([{ ...base, data_visita: "2026-08-25", quantidade_transferencias: 2 }], "2026-08-25");
+    expect(itens[0].motivos).toContain("Compromisso transferido e ainda não resolvido");
+  });
 });
