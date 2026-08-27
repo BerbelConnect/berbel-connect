@@ -47,6 +47,10 @@ export type AgendaVisita = {
   prioridade?: "Baixa" | "Normal" | "Alta" | "Urgente" | null;
   prazo_resolucao?: string | null;
   checklist?: AgendaChecklistItem[] | null;
+  data_original?: string | null;
+  quantidade_transferencias?: number | null;
+  ultima_transferencia_data?: string | null;
+  transferido_em?: string | null;
   clientes?: AgendaVisitaClientesRelation | null;
 };
 

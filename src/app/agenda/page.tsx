@@ -22,6 +22,8 @@ import {
   salvarVisita as salvarVisitaService,
   filtrarVisitas,
   gerarResumo,
+  prepararPendenciasAgenda,
+  prepararPendenciasOffline,
 } from "@/services/agenda";
 import { hojeISO } from "@/lib/agendaHelpers";
 import { filtrarPorPeriodo } from "@/lib/agendaPeriodo";
@@ -76,7 +78,8 @@ export default function AgendaPage() {
     }
 
     try {
-      const visitasData = await carregarVisitas();
+      await prepararPendenciasAgenda(hojeISO());
+      const visitasData = prepararPendenciasOffline(await carregarVisitas(), hojeISO());
       setVisitas(visitasData);
       atualizarCacheAgenda(clientesData, visitasData);
     } catch (error) {
