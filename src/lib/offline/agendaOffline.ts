@@ -55,7 +55,31 @@ export function enfileirarOperacaoAgenda(operacao: NovaOperacaoAgenda) {
   } else if (item.tipo === "iniciar") {
     gravar(VISITAS, visitas.map((visita) => visita.id === item.visita_id ? { ...visita, status: "Em andamento", iniciada_em: item.criado_em } : visita));
   } else if (item.tipo === "resultado") {
-    gravar(VISITAS, visitas.map((visita) => visita.id === item.visita.id ? { ...visita, status: "Concluída", concluida: true, pessoa_atendida: item.resultado.pessoa_atendida, resultado: item.resultado.resultado, proxima_acao: item.resultado.proxima_acao, data_retorno: item.resultado.data_retorno, lembrete_em: item.resultado.lembrete_em, checklist: item.resultado.checklist } : visita));
+    const atualizadas = visitas.map((visita) => visita.id === item.visita.id ? { ...visita, status: "Concluída", concluida: true, pessoa_atendida: item.resultado.pessoa_atendida, resultado: item.resultado.resultado, proxima_acao: item.resultado.proxima_acao, data_retorno: item.resultado.data_retorno, lembrete_em: item.resultado.lembrete_em, checklist: item.resultado.checklist, retorno_criado_id: item.resultado.agendar_retorno ? `offline-retorno-${item.visita.id}` : visita.retorno_criado_id } : visita);
+    if (item.resultado.agendar_retorno && item.resultado.data_retorno) {
+      const retornoId = `offline-retorno-${item.visita.id}`;
+      const retorno: AgendaVisita = {
+        ...item.visita,
+        id: retornoId,
+        data_visita: item.resultado.data_retorno,
+        hora_visita: item.resultado.hora_retorno || null,
+        status: "Agendada",
+        resultado: "",
+        observacoes: `Retorno: ${item.resultado.proxima_acao}`,
+        proxima_acao: item.resultado.proxima_acao,
+        prioridade: item.resultado.prioridade_retorno,
+        lembrete_em: item.resultado.lembrete_em,
+        alerta_retorno: Boolean(item.resultado.lembrete_em),
+        concluida: false,
+        iniciada_em: null,
+        visita_origem_id: item.visita.id,
+        retorno_criado_id: null,
+        checklist: [],
+      };
+      gravar(VISITAS, [retorno, ...atualizadas.filter((visita) => visita.id !== retornoId)]);
+    } else {
+      gravar(VISITAS, atualizadas);
+    }
   } else {
     gravar(VISITAS, visitas.map((visita) => visita.id === item.visita.id ? { ...visita, status: "Em andamento", pessoa_atendida: item.resultado.pessoa_atendida, resultado: item.resultado.resultado, proxima_acao: item.resultado.proxima_acao, data_retorno: item.resultado.data_retorno, lembrete_em: item.resultado.lembrete_em, checklist: item.resultado.checklist } : visita));
   }

@@ -24,6 +24,7 @@ function resultado(parcial: Partial<AgendaResultadoFormData> = {}): AgendaResult
     hora_retorno: "09:30",
     lembrete_em: "",
     agendar_retorno: false,
+    prioridade_retorno: "Alta",
     checklist: [],
     ...parcial,
   };
@@ -48,6 +49,7 @@ describe("resultado e retorno da agenda", () => {
       p_data_retorno: "2026-08-20",
       p_hora_retorno: "09:30",
       p_agendar_retorno: false,
+      p_prioridade_retorno: "Alta",
     }));
   });
 

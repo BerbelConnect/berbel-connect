@@ -154,6 +154,8 @@ function maparVisita(item: RawRecord): VisitaResumo {
     proxima_acao: getString(item.proxima_acao),
     data_retorno: dataISO(getString(item.data_retorno)),
     status: getString(item.status),
+    visita_origem_id: getString(item.visita_origem_id),
+    retorno_criado_id: getString(item.retorno_criado_id),
   };
 }
 
