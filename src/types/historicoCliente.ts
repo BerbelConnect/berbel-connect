@@ -45,6 +45,8 @@ export type VisitaResumo = {
   proxima_acao?: string | null;
   data_retorno?: string | null;
   status?: string | null;
+  visita_origem_id?: string | null;
+  retorno_criado_id?: string | null;
 };
 
 export type ContaReceberResumo = {

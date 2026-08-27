@@ -25,7 +25,7 @@ export function FichaVisitasTab({ visitas }: { visitas: VisitaResumo[] }) {
             {visitas.length > 0 ? (
               visitas.map((visita) => (
                 <tr key={visita.id}>
-                  <td className="px-4 py-4">{formatarData(visita.data_visita)}</td>
+                  <td className="px-4 py-4"><div>{formatarData(visita.data_visita)}</div>{visita.visita_origem_id && <span className="mt-1 inline-block rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">Retorno</span>}{visita.retorno_criado_id && <span className="mt-1 inline-block rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">Gerou retorno</span>}</td>
                   <td className="px-4 py-4">{formatarTexto(visita.hora_visita)}</td>
                   <td className="px-4 py-4">{formatarTexto(visita.tipo)}</td>
                   <td className="px-4 py-4">{formatarTexto(visita.pessoa_atendida)}</td>

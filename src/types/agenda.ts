@@ -51,6 +51,8 @@ export type AgendaVisita = {
   quantidade_transferencias?: number | null;
   ultima_transferencia_data?: string | null;
   transferido_em?: string | null;
+  visita_origem_id?: string | null;
+  retorno_criado_id?: string | null;
   clientes?: AgendaVisitaClientesRelation | null;
 };
 
@@ -94,6 +96,7 @@ export type AgendaResultadoFormData = {
   hora_retorno: string;
   lembrete_em: string;
   agendar_retorno: boolean;
+  prioridade_retorno: "Baixa" | "Normal" | "Alta" | "Urgente";
   checklist: AgendaChecklistItem[];
 };
 

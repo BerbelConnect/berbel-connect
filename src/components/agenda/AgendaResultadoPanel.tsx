@@ -27,7 +27,7 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave, onCont
   const somenteLeitura = visita.status === "Concluída";
   const chaveRascunho = `berbel_agenda_rascunho_${visita.id}`;
   const [form, setForm] = useState<AgendaResultadoFormData>(() => {
-    const inicial = { pessoa_atendida: visita.pessoa_atendida || "", resultado: visita.resultado || "", proxima_acao: visita.proxima_acao || "", data_retorno: visita.data_retorno || "", hora_retorno: visita.hora_visita?.slice(0, 5) || "", lembrete_em: visita.lembrete_em?.slice(0, 16) || "", agendar_retorno: false, checklist: visita.checklist || [] };
+    const inicial = { pessoa_atendida: visita.pessoa_atendida || "", resultado: visita.resultado || "", proxima_acao: visita.proxima_acao || "", data_retorno: visita.data_retorno || "", hora_retorno: visita.hora_visita?.slice(0, 5) || "", lembrete_em: visita.lembrete_em?.slice(0, 16) || "", agendar_retorno: false, prioridade_retorno: visita.prioridade || "Normal" as const, checklist: visita.checklist || [] };
     if (typeof window === "undefined") return inicial;
     try { const salvo = JSON.parse(localStorage.getItem(chaveRascunho) || "") as Partial<AgendaResultadoFormData>; return { ...inicial, ...salvo, checklist: Array.isArray(salvo.checklist) ? salvo.checklist : inicial.checklist }; } catch { return inicial; }
   });
@@ -83,8 +83,9 @@ export function AgendaResultadoPanel({ visita, salvando, onClose, onSave, onCont
           </div>
           <label className="text-sm font-semibold">Data do retorno<input type="date" value={form.data_retorno} disabled={somenteLeitura} onChange={(e) => setForm({ ...form, data_retorno: e.target.value })} className="mt-1 w-full rounded-xl border px-4 py-3 disabled:bg-slate-100" /></label>
           <label className="text-sm font-semibold">Horário do retorno<input type="time" value={form.hora_retorno} disabled={somenteLeitura} onChange={(e) => setForm({ ...form, hora_retorno: e.target.value })} className="mt-1 w-full rounded-xl border px-4 py-3 disabled:bg-slate-100" /></label>
+          <label className="text-sm font-semibold">Prioridade da próxima ação<select value={form.prioridade_retorno} disabled={somenteLeitura} onChange={(e) => setForm({ ...form, prioridade_retorno: e.target.value as AgendaResultadoFormData["prioridade_retorno"] })} className="mt-1 w-full rounded-xl border px-4 py-3 disabled:bg-slate-100"><option>Baixa</option><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
           <label className="text-sm font-semibold md:col-span-2">Lembrete<input type="datetime-local" value={form.lembrete_em} disabled={somenteLeitura} onChange={(e) => setForm({ ...form, lembrete_em: e.target.value })} className="mt-1 w-full rounded-xl border px-4 py-3 disabled:bg-slate-100" /></label>
-          {!somenteLeitura && <label className="flex items-center gap-3 rounded-xl border bg-blue-50 px-4 py-3 md:col-span-2"><input type="checkbox" checked={form.agendar_retorno} disabled={!form.data_retorno} onChange={(e) => setForm({ ...form, agendar_retorno: e.target.checked })} />Criar automaticamente um novo compromisso para a data de retorno</label>}
+          {!somenteLeitura && <label className="flex items-center gap-3 rounded-xl border bg-blue-50 px-4 py-3 md:col-span-2"><input type="checkbox" checked={form.agendar_retorno} disabled={!form.data_retorno || !form.proxima_acao.trim()} onChange={(e) => setForm({ ...form, agendar_retorno: e.target.checked })} />Criar automaticamente um novo compromisso vinculado a esta visita</label>}
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
           {!somenteLeitura && <button disabled={salvando || !form.resultado.trim()} onClick={() => onSave(form)} className="rounded-xl bg-green-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Concluir e salvar"}</button>}

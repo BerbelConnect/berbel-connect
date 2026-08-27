@@ -44,6 +44,8 @@ export function AgendaTable({
               <p className="text-sm">Resultado: {visita.resultado || "-"}</p>
               {(visita.checklist?.length || 0) > 0 && <p className="mt-2 text-sm font-semibold text-slate-600">Checklist: {visita.checklist?.filter((item) => item.concluido).length}/{visita.checklist?.length}</p>}
               <p className="text-sm text-slate-500">Prioridade: {visita.prioridade || "Normal"}{visita.prazo_resolucao ? ` • Prazo: ${visita.prazo_resolucao}` : ""}</p>
+              {visita.visita_origem_id && <p className="mt-2 text-sm font-semibold text-blue-700">Retorno vinculado a uma visita anterior</p>}
+              {visita.retorno_criado_id && <p className="mt-2 text-sm font-semibold text-green-700">Próxima ação agendada</p>}
               {(visita.quantidade_transferencias || 0) > 0 && <p className="mt-2 text-sm font-semibold text-amber-700">Transferida {visita.quantidade_transferencias}x • Data original: {visita.data_original || "-"}</p>}
             </div>
 

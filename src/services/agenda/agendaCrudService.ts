@@ -69,6 +69,7 @@ export async function registrarResultadoVisitaOnline(
     p_hora_retorno: form.hora_retorno || null,
     p_lembrete_em: lembreteIso,
     p_agendar_retorno: form.agendar_retorno,
+    p_prioridade_retorno: form.prioridade_retorno,
   });
 
   return error;
