@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { dataIsoBrasil } from "@/lib/dataBrasil";
+import { RotaAgendaDia } from "@/components/rotas/RotaAgendaDia";
 
 function diasDesde(data?: string | null) {
   if (!data) return 999;
@@ -76,6 +77,7 @@ export default function RotasPage() {
   const [formVisita, setFormVisita] = useState<any | null>(null);
   const [formLote, setFormLote] = useState(loteInicial);
   const [carregandoLote, setCarregandoLote] = useState(false);
+  const [dataRota, setDataRota] = useState(hojeISO());
 
   async function carregarDados() {
     const clientesResp = await supabase
@@ -85,7 +87,7 @@ export default function RotasPage() {
 
     const visitasResp = await supabase
       .from("visitas")
-      .select("cliente_id, data_visita")
+      .select("id, cliente_id, contato_avulso_nome, contato_avulso_empresa, contato_avulso_endereco, data_visita, hora_visita, tipo_contato, status, ordem_rota, clientes(razao_social, endereco, numero, bairro, cidade, estado)")
       .order("data_visita", { ascending: false });
 
     if (clientesResp.error) return alert(clientesResp.error.message);
@@ -96,6 +98,8 @@ export default function RotasPage() {
   }
 
   useEffect(() => {
+    const dataRecebida = new URLSearchParams(window.location.search).get("data");
+    if (dataRecebida) setDataRota(dataRecebida);
     carregarDados();
   }, []);
 
@@ -343,6 +347,8 @@ export default function RotasPage() {
               <Card titulo="Alta prioridade" valor={altaPrioridade} />
               <Card titulo="Média prioridade" valor={mediaPrioridade} />
             </div>
+
+            <RotaAgendaDia visitas={visitas} data={dataRota} onDataChange={setDataRota} />
 
             {formVisita && (
               <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm">

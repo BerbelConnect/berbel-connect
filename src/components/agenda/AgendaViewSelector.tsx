@@ -1,4 +1,5 @@
 import type { AgendaVisualizacao } from "@/types/agenda";
+import Link from "next/link";
 
 type Props = {
   visualizacao: AgendaVisualizacao;
@@ -20,10 +21,10 @@ export function AgendaViewSelector({ visualizacao, referencia, onVisualizacao, o
           ))}
         </div>
       </div>
-      <label className="text-sm font-semibold text-slate-600">
+      <div className="flex flex-wrap items-center gap-3"><Link href={`/rotas?data=${encodeURIComponent(referencia)}`} className="rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Planejar rota desta data</Link><label className="text-sm font-semibold text-slate-600">
         Data de referência
         <input type="date" value={referencia} onChange={(e) => onReferencia(e.target.value)} className="ml-3 rounded-xl border border-slate-200 px-4 py-2" />
-      </label>
+      </label></div>
     </div>
   );
 }
